@@ -59,8 +59,7 @@ const getAllRides = async (req, res) => {
       query += ` WHERE r.status = ?`;
       params.push(status);
     }
-    query += ` ORDER BY r.created_at DESC LIMIT ? OFFSET ?`;
-    params.push(parseInt(limit), parseInt(offset));
+    query += ` ORDER BY r.created_at DESC LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}`;
 
     const [rides] = await db.execute(query, params);
     res.json({ rides });
