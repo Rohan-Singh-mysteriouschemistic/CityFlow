@@ -360,21 +360,27 @@ VALUES
 -- Hash generated with bcrypt rounds=10
 -- ─────────────────────────────────────────────
 INSERT IGNORE INTO users (full_name, email, phone, password_hash, role) VALUES
--- Riders (will get user_id 1-6)
-('Rohan Singh',  'rohan@cityflow.in',  '9810001001', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
-('Arjun Sharma', 'arjun@cityflow.in',  '9810001002', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
-('Priya Patel',  'priya@cityflow.in',  '9810001003', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
-('Sneha Reddy',  'sneha@cityflow.in',  '9810001004', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
-('Vikram Singh', 'vikram@cityflow.in', '9810001005', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
-('Ananya Iyer',  'ananya@cityflow.in', '9810001006', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
--- Drivers (will get user_id 7-11)
-('Ramesh Kumar',  'ramesh@cityflow.in', '9911001001', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
-('Suresh Yadav',  'suresh@cityflow.in', '9911001002', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
-('Mahesh Tiwari', 'mahesh@cityflow.in', '9911001003', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
-('Ganesh Sharma', 'ganesh@cityflow.in', '9911001004', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
-('Paresh Jain',   'paresh@cityflow.in', '9911001005', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
--- Admin (will get user_id 12)
-('CityFlow Admin', 'admin@cityflow.in', '9999999999', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'admin');
+
+-- Riders
+('Rohan Singh',  'rohan@cityflow.in',  '9810001001', '$2b$12$lOe0s63rC7ryBgrPso2y7.rMNIN8PqivX2ciuo9seCB0Gc6yAY8em', 'rider'),
+('Arjun Sharma', 'arjun@cityflow.in',  '9810001002', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider'),
+('Priya Patel',  'priya@cityflow.in',  '9810001003', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider'),
+('Sneha Reddy',  'sneha@cityflow.in',  '9810001004', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider'),
+('Vikram Singh', 'vikram@cityflow.in', '9810001005', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider'),
+('Ananya Iyer',  'ananya@cityflow.in', '9810001006', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider'),
+
+-- Drivers
+('Ramesh Kumar',  'ramesh@cityflow.in', '9911001001', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver'),
+('Suresh Yadav',  'suresh@cityflow.in', '9911001002', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver'),
+('Mahesh Tiwari', 'mahesh@cityflow.in', '9911001003', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver'),
+('Ganesh Sharma', 'ganesh@cityflow.in', '9911001004', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver'),
+('Paresh Jain',   'paresh@cityflow.in', '9911001005', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver'),
+
+-- Admin
+('CityFlow Admin', 'admin@cityflow.in', '9999999999', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'admin'),
+
+-- Extra user
+('Shabd Yadav', 'shabd@cityflow.com', '9990245637', '$2b$12$OIf4rSkdsjqvXf3cBDPdXuJVViuBHTvoxY.wCwFFJjGL58URk2LTq', 'rider');
 
 -- ─────────────────────────────────────────────
 -- STEP 3: RIDER PROFILES
