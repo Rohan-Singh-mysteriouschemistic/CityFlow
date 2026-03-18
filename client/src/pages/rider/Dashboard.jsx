@@ -105,7 +105,12 @@ export default function RiderDashboard() {
   const [activeRide,     setActiveRide]     = useState(null)
   const [pendingRequest, setPendingRequest] = useState(null)
   const [showConfirm,    setShowConfirm]    = useState(false)
-
+  const [cancelReqLoading, setCancelReqLoading] = useState(false)
+  const [elapsed, setElapsed] = useState(0)   // seconds since request was made
+  // ── Rating panel ────────────────────────────────────────
+  const [ratingRide,    setRatingRide]    = useState(null)  // {ride_id, driver_name, ...}
+  const [ratingValue,   setRatingValue]   = useState(0)
+  const [ratingLoading, setRatingLoading] = useState(false)
   // ── initial load ──────────────────────────────────────────
   useEffect(() => {
     api.get('/rides/zones').then(r => setZones(r.data.zones))
@@ -120,6 +125,23 @@ export default function RiderDashboard() {
     return () => clearInterval(interval)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── poll for unrated completed rides every 6 s ───────────
+  // Shows the rating modal as soon as a ride is completed and unrated.
+  useEffect(() => {
+    const checkUnrated = async () => {
+      try {
+        const r = await api.get('/rides/unrated/rider')
+        if (r.data.ride && !ratingRide) {
+          setRatingRide(r.data.ride)
+          setRatingValue(0)
+        }
+      } catch {}
+    }
+    checkUnrated()
+    const t = setInterval(checkUnrated, 6000)
+    return () => clearInterval(t)
+  }, [ratingRide?.ride_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // FIX 3: added `tab` to dep array — without it the effect captured a stale
   // closure over `tab` and never auto-switched away from non-home tabs.
   useEffect(() => {
@@ -127,6 +149,14 @@ export default function RiderDashboard() {
       if (tab === 'home') setTab('active')
     }
   }, [activeRide?.status, tab])
+
+  // ── elapsed timer — ticks only while pendingRequest is live ──────────────
+  useEffect(() => {
+    if (!pendingRequest) { setElapsed(0); return }
+    setElapsed(0)
+    const t = setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [pendingRequest?.request_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkActiveRide = async () => {
     try {
@@ -198,11 +228,148 @@ export default function RiderDashboard() {
     }
   }
 
+  const cancelPendingRequest = async () => {
+    if (!pendingRequest?.request_id) return
+    setCancelReqLoading(true)
+    try {
+      await api.delete(`/rides/request/${pendingRequest.request_id}/cancel`)
+      toast.success('Ride request cancelled')
+      setPendingRequest(null)
+      setTab('home')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not cancel request')
+    } finally {
+      setCancelReqLoading(false)
+    }
+  }
+
+  const submitRating = async () => {
+    if (!ratingRide?.ride_id || ratingValue < 1) return toast.error('Pick a star rating first')
+    setRatingLoading(true)
+    try {
+      await api.patch(`/rides/${ratingRide.ride_id}/rate`, { rating: ratingValue, feedback: '' })
+      toast.success('Rating submitted — thank you!')
+      setRatingRide(null)
+      setRatingValue(0)
+      loadHistory()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit rating')
+    } finally {
+      setRatingLoading(false)
+    }
+  }
+
   const completedCnt = history.filter(r => r.status === 'completed').length
   const hasActiveRide = !!activeRide || !!pendingRequest
 
   return (
     <div style={S.shell}>
+
+      {/* ── POST-RIDE RATING OVERLAY ─────────────────────────────────────────── */}
+      {ratingRide && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:999,
+          background:'rgba(0,0,0,.75)', backdropFilter:'blur(6px)',
+          display:'flex', alignItems:'center', justifyContent:'center', padding:20
+        }}>
+          <div style={{
+            background:'#111318', border:'1px solid #2a2f3e', borderRadius:20,
+            padding:36, maxWidth:420, width:'100%', textAlign:'center',
+            boxShadow:'0 24px 64px rgba(0,0,0,.6)'
+          }}>
+            {/* Icon */}
+            <div style={{
+              width:64, height:64, borderRadius:20, margin:'0 auto 20px',
+              background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:28
+            }}>🏁</div>
+
+            <div style={{fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:700, color:'#e8eaf0', marginBottom:6}}>
+              Ride Completed!
+            </div>
+            <div style={{fontSize:13, color:'#8b93a8', marginBottom:4}}>
+              How was your trip with <strong style={{color:'#e8eaf0'}}>{ratingRide.driver_name}</strong>?
+            </div>
+            <div style={{fontSize:11, color:'#4a5270', marginBottom:24}}>
+              {ratingRide.pickup_address} → {ratingRide.drop_address}
+              {ratingRide.total_amount && (
+                <span style={{color:'#2dd4a0', fontWeight:600}}>
+                  {' · '}₹{parseFloat(ratingRide.total_amount).toFixed(0)} paid
+                </span>
+              )}
+            </div>
+
+            {/* Star selector */}
+            <div style={{display:'flex', justifyContent:'center', gap:12, marginBottom:8}}>
+              {[1,2,3,4,5].map(star => (
+                <button
+                  key={star}
+                  onClick={() => setRatingValue(star)}
+                  style={{
+                    fontSize:36, background:'none', border:'none', cursor:'pointer',
+                    transform: ratingValue >= star ? 'scale(1.2)' : 'scale(1)',
+                    transition:'transform .15s, filter .15s',
+                    filter: ratingValue >= star ? 'none' : 'grayscale(1) opacity(.35)',
+                    lineHeight:1
+                  }}
+                  title={['','Poor','Below average','Average','Good','Excellent'][star]}
+                >
+                  ⭐
+                </button>
+              ))}
+            </div>
+            <div style={{height:20, marginBottom:20, fontSize:13, color:'#f5a623', fontWeight:600}}>
+              {ratingValue === 0 && ''}
+              {ratingValue === 1 && 'Poor'}
+              {ratingValue === 2 && 'Below Average'}
+              {ratingValue === 3 && 'Average'}
+              {ratingValue === 4 && 'Good'}
+              {ratingValue === 5 && '✨ Excellent!'}
+            </div>
+
+            {/* Driver info */}
+            {ratingRide.make && (
+              <div style={{
+                fontSize:12, color:'#8b93a8', marginBottom:20,
+                padding:'10px 14px', background:'#181c24', borderRadius:10
+              }}>
+                {ratingRide.make} {ratingRide.model} · {ratingRide.color}
+                {ratingRide.driver_avg_rating &&
+                  <span style={{color:'#f5a623'}}> · ★ {parseFloat(ratingRide.driver_avg_rating).toFixed(2)} avg</span>}
+              </div>
+            )}
+
+            {/* Submit */}
+            <button
+              onClick={submitRating}
+              disabled={ratingLoading || ratingValue < 1}
+              style={{
+                width:'100%', padding:'13px', borderRadius:12, border:'none',
+                background: ratingValue < 1
+                  ? '#2a2f3e'
+                  : 'linear-gradient(135deg,#4f8cff,#7c6aff)',
+                color: ratingValue < 1 ? '#4a5270' : '#fff',
+                fontSize:15, fontWeight:600,
+                cursor: ratingValue < 1 || ratingLoading ? 'not-allowed' : 'pointer',
+                opacity: ratingLoading ? 0.7 : 1,
+                marginBottom:10, transition:'.2s'
+              }}
+            >
+              {ratingLoading ? 'Submitting…' : '★ Submit Rating'}
+            </button>
+            <button
+              onClick={() => { setRatingRide(null); setRatingValue(0) }}
+              style={{
+                background:'none', border:'none', color:'#4a5270',
+                fontSize:12, cursor:'pointer', padding:'4px 0'
+              }}
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── SIDEBAR ── */}
       <aside style={S.sidebar}>
         <div style={S.logo}>
@@ -577,13 +744,127 @@ export default function RiderDashboard() {
                   </div>
                 </div>
               ) : pendingRequest ? (
-                <div style={{...S.card, padding:48, textAlign:'center'}}>
-                  <div style={{fontSize:40, marginBottom:16}}>⏳</div>
-                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:600, color:'#e8eaf0', marginBottom:8}}>
-                    Waiting for a driver...
+                /* ── RICH PENDING REQUEST CARD ── */
+                <div style={S.card}>
+                  {/* Animated header */}
+                  <div style={{
+                    padding:'20px 24px',
+                    background:'linear-gradient(135deg,rgba(79,140,255,.12),rgba(124,106,255,.08))',
+                    borderBottom:'1px solid rgba(79,140,255,.2)',
+                    display:'flex', alignItems:'center', gap:14
+                  }}>
+                    {/* Pulsing search rings */}
+                    <div style={{position:'relative', width:48, height:48, flexShrink:0}}>
+                      <div style={{
+                        position:'absolute', inset:0, borderRadius:'50%',
+                        border:'2px solid rgba(79,140,255,.6)',
+                        animation:'pingOuter 1.8s ease-out infinite'
+                      }}/>
+                      <div style={{
+                        position:'absolute', inset:6, borderRadius:'50%',
+                        border:'2px solid rgba(124,106,255,.5)',
+                        animation:'pingOuter 1.8s ease-out infinite .4s'
+                      }}/>
+                      <div style={{
+                        position:'absolute', inset:12, borderRadius:'50%',
+                        background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        fontSize:12
+                      }}>🔍</div>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:700, color:'#e8eaf0'}}>
+                        Searching for a driver…
+                      </div>
+                      <div style={{fontSize:12, color:'#8b93a8', marginTop:2}}>
+                        Matching you with the best available driver nearby
+                      </div>
+                    </div>
+                    {/* Live elapsed time */}
+                    <div style={{textAlign:'right', flexShrink:0}}>
+                      <div style={{fontSize:11, color:'#8b93a8', marginBottom:2}}>Waiting</div>
+                      <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:700, color:'#4f8cff'}}>
+                        {String(Math.floor(elapsed/60)).padStart(2,'0')}:{String(elapsed%60).padStart(2,'0')}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>
-                    Your request is being processed. We are looking for a driver for you.
+
+                  <div style={{padding:'20px 24px'}}>
+                    {/* Route */}
+                    <div style={{
+                      background:'#181c24', borderRadius:12, padding:'16px',
+                      marginBottom:16, position:'relative'
+                    }}>
+                      <div style={{display:'flex', alignItems:'flex-start', gap:12}}>
+                        <div style={{display:'flex', flexDirection:'column', alignItems:'center', paddingTop:3}}>
+                          <div style={{width:10, height:10, borderRadius:'50%', background:'#4f8cff', border:'2px solid #4f8cff'}}/>
+                          <div style={{width:2, height:28, background:'linear-gradient(to bottom,#4f8cff,#7c6aff)', margin:'3px 0'}}/>
+                          <div style={{width:10, height:10, borderRadius:'50%', background:'#7c6aff', border:'2px solid #7c6aff'}}/>
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{marginBottom:12}}>
+                            <div style={{fontSize:10, color:'#4a5270', letterSpacing:'.5px', marginBottom:2}}>PICKUP</div>
+                            <div style={{fontSize:13, fontWeight:500, color:'#e8eaf0'}}>{pendingRequest.pickup_address}</div>
+                          </div>
+                          <div>
+                            <div style={{fontSize:10, color:'#4a5270', letterSpacing:'.5px', marginBottom:2}}>DROP</div>
+                            <div style={{fontSize:13, fontWeight:500, color:'#e8eaf0'}}>{pendingRequest.drop_address}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Fare / Distance / Vehicle row */}
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:18}}>
+                      {[
+                        { label:'Est. Fare',    val:`₹${parseFloat(pendingRequest.estimated_fare||0).toFixed(0)}`,  color:'#2dd4a0' },
+                        { label:'Distance',     val:`${pendingRequest.estimated_km} km`,                             color:'#4f8cff' },
+                        { label:'Vehicle',      val:(pendingRequest.vehicle_type||'sedan').toUpperCase(),            color:'#f5a623' },
+                      ].map(({label,val,color}) => (
+                        <div key={label} style={{
+                          background:'#181c24', borderRadius:10, padding:'12px',
+                          textAlign:'center', border:'1px solid #2a2f3e'
+                        }}>
+                          <div style={{fontSize:10, color:'#8b93a8', marginBottom:4}}>{label}</div>
+                          <div style={{fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:700, color}}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Status dots — animated */}
+                    <div style={{
+                      display:'flex', alignItems:'center', gap:6, marginBottom:20,
+                      padding:'10px 14px', background:'#181c24', borderRadius:10
+                    }}>
+                      {[0,1,2].map(i => (
+                        <div key={i} style={{
+                          width:8, height:8, borderRadius:'50%',
+                          background:'#4f8cff',
+                          animation:`dotBounce 1.2s ease-in-out infinite`,
+                          animationDelay:`${i*0.2}s`
+                        }}/>
+                      ))}
+                      <span style={{fontSize:12, color:'#8b93a8', marginLeft:8}}>
+                        Checking every 5 seconds for available drivers…
+                      </span>
+                    </div>
+
+                    {/* Cancel request button */}
+                    <button
+                      onClick={cancelPendingRequest}
+                      disabled={cancelReqLoading}
+                      style={{
+                        width:'100%', padding:'12px', borderRadius:10,
+                        border:'1px solid rgba(240,96,96,.4)',
+                        background:'rgba(240,96,96,.06)',
+                        color:'#f06060', fontSize:14, fontWeight:600,
+                        cursor: cancelReqLoading ? 'not-allowed' : 'pointer',
+                        opacity: cancelReqLoading ? 0.6 : 1,
+                        transition:'.15s'
+                      }}
+                    >
+                      {cancelReqLoading ? 'Cancelling…' : '✕ Cancel Request'}
+                    </button>
                   </div>
                 </div>
               ) : (

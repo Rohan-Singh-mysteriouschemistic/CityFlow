@@ -17,6 +17,26 @@ router.patch('/availability', protect, restrictTo(ROLES.DRIVER), async (req, res
   }
 });
 
+// ── UPDATE DRIVER'S OPERATING ZONE ───────────────────────────────────────────
+router.patch('/zone', protect, restrictTo(ROLES.DRIVER), async (req, res) => {
+  const { zone_id } = req.body;
+  if (!zone_id) return res.status(400).json({ message: 'zone_id is required' });
+  try {
+    // Verify zone exists
+    const [zones] = await db.execute(`SELECT zone_id FROM zones WHERE zone_id = ?`, [zone_id]);
+    if (zones.length === 0) return res.status(404).json({ message: 'Zone not found' });
+
+    await db.execute(
+      `UPDATE driver_profiles SET current_zone_id = ? WHERE driver_id = ?`,
+      [zone_id, req.user.user_id]
+    );
+    res.json({ message: 'Zone updated successfully', zone_id });
+  } catch (err) {
+    console.error('updateZone error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 router.get('/me', protect, restrictTo(ROLES.DRIVER), async (req, res) => {
   try {
     const [rows] = await db.execute(

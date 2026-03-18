@@ -70,6 +70,11 @@ const S = {
     background:'#181c24', border:'1px solid #2a2f3e', borderRadius:10,
     padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none', width:'100%'
   },
+  select: {
+    background:'#181c24', border:'1px solid #2a2f3e', borderRadius:10,
+    padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none',
+    width:'100%', boxSizing:'border-box', cursor:'pointer'
+  },
   btn: {
     background:'linear-gradient(135deg,#2dd4a0,#4f8cff)',
     border:'none', borderRadius:10, padding:'12px 20px',
@@ -96,7 +101,12 @@ export default function DriverDashboard() {
   const [otp,        setOtp]        = useState('')
   const [loading,    setLoading]    = useState(false)
   const [requests,   setRequests]   = useState([])
-  const [accepting,  setAccepting]  = useState(null)   // request_id being accepted
+  const [accepting,  setAccepting]  = useState(null)
+  // ── Zone state ──────────────────────────────
+  const [zones,         setZones]         = useState([])
+  const [selectedZone,  setSelectedZone]  = useState(null)   // zone_id (number)
+  const [zoneLoading,   setZoneLoading]   = useState(false)
+  // ────────────────────────────────────────────
   const prevRequestIds = useRef([])
 
   // ── initial load ──────────────────────────────────────────
@@ -104,19 +114,21 @@ export default function DriverDashboard() {
     api.get('/auth/me').then(r => {
       setProfile(r.data.user)
       setAvailable(r.data.user.is_available || false)
+      if (r.data.user.current_zone_id) setSelectedZone(r.data.user.current_zone_id)
     })
+    api.get('/rides/zones').then(r => setZones(r.data.zones || []))
     loadHistory()
     checkActiveRide()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── polling every 5 s ────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
       checkActiveRide()
-      if (!activeRide) loadRequests()   // only poll requests when not on a ride
+      if (!activeRide) loadRequests()
     }, 5000)
     return () => clearInterval(interval)
-  }, [tab, activeRide])
+  }, [tab, activeRide]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── notify driver when a NEW request appears in their zone ─
   useEffect(() => {
@@ -133,12 +145,11 @@ export default function DriverDashboard() {
             border: '1px solid #2dd4a0', borderRadius: 10
           }
         })
-        // auto-switch to requests tab if driver is online and has no active ride
         if (available && !activeRide) setTab('requests')
       }
     }
     prevRequestIds.current = currentIds
-  }, [requests])
+  }, [requests]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadRequests = async () => {
     try {
@@ -150,12 +161,24 @@ export default function DriverDashboard() {
   const checkActiveRide = async () => {
     try {
       const r = await api.get('/rides/active/driver')
-      if (r.data.ride) {
-        setActiveRide(r.data.ride)
-      } else {
-        setActiveRide(null)
-      }
+      setActiveRide(r.data.ride || null)
     } catch {}
+  }
+
+  // ── update operating zone ─────────────────────────────────
+  const updateZone = async (zone_id) => {
+    setZoneLoading(true)
+    try {
+      await api.patch('/drivers/zone', { zone_id: parseInt(zone_id) })
+      setSelectedZone(parseInt(zone_id))
+      const z = zones.find(z => z.zone_id === parseInt(zone_id))
+      toast.success(`Zone updated to ${z?.zone_name || 'selected zone'}`)
+      loadRequests()   // refresh available rides for new zone
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update zone')
+    } finally {
+      setZoneLoading(false)
+    }
   }
 
   // ── accept: first-come-first-served ──────────────────────
@@ -173,10 +196,9 @@ export default function DriverDashboard() {
       loadRequests()
     } catch (err) {
       const msg = err.response?.data?.message || 'Could not accept ride'
-      // backend returns 409 when ride already taken
       if (err.response?.status === 409) {
         toast.error('Ride was already accepted by another driver')
-        loadRequests()   // refresh to remove stale request
+        loadRequests()
       } else {
         toast.error(msg)
       }
@@ -222,7 +244,7 @@ export default function DriverDashboard() {
   const completeRide = async (ride_id) => {
     setLoading(true)
     try {
-      await api.patch(`/rides/${ride_id}/complete`, { actual_km: 12, payment_method: 'upi' })
+      await api.patch(`/rides/${ride_id}/complete`, { actual_km: activeRide?.estimated_km || 12, payment_method: 'upi' })
       toast.success('Ride completed!')
       setActiveRide(null)
       setOtp('')
@@ -242,8 +264,8 @@ export default function DriverDashboard() {
   const todayRides      = history.filter(r =>
     r.status==='completed' && new Date(r.start_time).toDateString()===new Date().toDateString()
   )
+  const currentZoneName = zones.find(z => z.zone_id === selectedZone)?.zone_name || null
 
-  // ── nav items — Requests locked when driver has active ride ─
   const navItems = [
     { id:'home',     label:'Dashboard',   icon:'📊', disabled: false },
     { id:'requests', label:'Requests',    icon:'📬',
@@ -293,6 +315,17 @@ export default function DriverDashboard() {
           ))}
         </nav>
 
+        {/* Zone badge in sidebar */}
+        {currentZoneName && (
+          <div style={{
+            margin:'0 8px 8px', padding:'8px 12px', borderRadius:8,
+            background:'rgba(79,140,255,.08)', border:'1px solid rgba(79,140,255,.2)',
+            fontSize:11, color:'#4f8cff'
+          }}>
+            📍 Zone: <strong>{currentZoneName}</strong>
+          </div>
+        )}
+
         <div style={{padding:'8px', borderTop:'1px solid #2a2f3e'}}>
           <div style={{padding:'10px 12px 6px', fontSize:12, color:'#4a5270'}}>
             Signed in as
@@ -314,7 +347,9 @@ export default function DriverDashboard() {
               {tab==='history'  && 'Ride History'}
               {tab==='profile'  && 'My Profile'}
             </div>
-            <div style={{fontSize:12, color:'#8b93a8'}}>Delhi · CityFlow Driver</div>
+            <div style={{fontSize:12, color:'#8b93a8'}}>
+              {currentZoneName ? `${currentZoneName} · CityFlow Driver` : 'Delhi · CityFlow Driver'}
+            </div>
           </div>
           <div style={{display:'flex', alignItems:'center', gap:12}}>
             {hasActiveRide && (
@@ -393,13 +428,14 @@ export default function DriverDashboard() {
               </div>
 
               <div style={S.grid2}>
-                {/* Availability card */}
+                {/* Availability + Zone card */}
                 <div style={S.card}>
-                  <div style={S.cardHead}><span style={S.cardTitle}>Availability</span></div>
+                  <div style={S.cardHead}><span style={S.cardTitle}>Status & Zone</span></div>
                   <div style={S.cardBody}>
+                    {/* Availability toggle */}
                     <div style={{
                       display:'flex', alignItems:'center', justifyContent:'space-between',
-                      padding:'16px', background:'#181c24', borderRadius:10, marginBottom:16
+                      padding:'14px 16px', background:'#181c24', borderRadius:10, marginBottom:14
                     }}>
                       <div>
                         <div style={{fontSize:14, fontWeight:500, color:'#e8eaf0'}}>
@@ -413,13 +449,58 @@ export default function DriverDashboard() {
                         <div style={S.toggleKnob(available)}/>
                       </button>
                     </div>
-                    <div style={{fontSize:12, color:'#4a5270', lineHeight:1.7}}>
-                      Go online to start receiving ride requests from riders in your zone.
-                      Your rating and location determine ride matching priority.
+
+                    {/* ── ZONE SELECTOR ── */}
+                    <div style={{marginBottom:14}}>
+                      <div style={{
+                        fontSize:11, color:'#8b93a8', marginBottom:8,
+                        textTransform:'uppercase', letterSpacing:'.6px'
+                      }}>
+                        Operating Zone
+                      </div>
+                      <div style={{position:'relative'}}>
+                        <select
+                          style={{
+                            ...S.select,
+                            borderColor: selectedZone ? 'rgba(45,212,160,.4)' : '#2a2f3e',
+                            opacity: zoneLoading ? 0.6 : 1
+                          }}
+                          value={selectedZone || ''}
+                          disabled={zoneLoading}
+                          onChange={e => updateZone(e.target.value)}
+                        >
+                          <option value="" disabled>— Select your zone —</option>
+                          {zones.map(z => (
+                            <option key={z.zone_id} value={z.zone_id}>
+                              {z.zone_name} {z.area_name ? `(${z.area_name})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {zoneLoading && (
+                          <div style={{
+                            position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
+                            fontSize:11, color:'#2dd4a0'
+                          }}>Saving…</div>
+                        )}
+                      </div>
+                      {selectedZone && (
+                        <div style={{
+                          marginTop:8, fontSize:11, color:'#2dd4a0',
+                          display:'flex', alignItems:'center', gap:6
+                        }}>
+                          ✓ Showing requests in <strong>{currentZoneName}</strong> only
+                        </div>
+                      )}
+                      {!selectedZone && (
+                        <div style={{marginTop:8, fontSize:11, color:'#f5a623'}}>
+                          ⚠ Select a zone to receive targeted ride requests
+                        </div>
+                      )}
                     </div>
+
                     {hasActiveRide && (
                       <div style={{
-                        marginTop:12, padding:'10px 14px', borderRadius:8,
+                        padding:'10px 14px', borderRadius:8,
                         background:'rgba(240,96,96,.06)', border:'1px solid rgba(240,96,96,.2)',
                         fontSize:12, color:'#f06060'
                       }}>
@@ -458,20 +539,36 @@ export default function DriverDashboard() {
           {tab === 'requests' && (
             <div style={S.card}>
               <div style={S.cardHead}>
-                <span style={S.cardTitle}>Ride Requests — Your Zone</span>
+                <span style={S.cardTitle}>Ride Requests — {currentZoneName || 'Your Zone'}</span>
                 <button onClick={loadRequests} style={{
                   fontSize:12, color:'#2dd4a0', background:'none', border:'none', cursor:'pointer'
                 }}>↻ Refresh</button>
               </div>
               <div style={S.cardBody}>
-                {/* Zone-lock notice */}
+                {/* Zone notice */}
                 <div style={{
                   background:'rgba(45,212,160,.05)', border:'1px solid rgba(45,212,160,.15)',
                   borderRadius:10, padding:'10px 14px', marginBottom:16,
-                  fontSize:12, color:'#8b93a8'
+                  fontSize:12, color:'#8b93a8',
+                  display:'flex', alignItems:'center', justifyContent:'space-between'
                 }}>
-                  📍 Showing requests from riders in <strong style={{color:'#2dd4a0'}}>your zone only</strong>.
-                  First driver to accept wins the booking.
+                  <span>
+                    📍 Showing requests from riders in <strong style={{color:'#2dd4a0'}}>
+                      {currentZoneName || 'your zone'}
+                    </strong>. First driver to accept wins.
+                  </span>
+                  {!selectedZone && (
+                    <button
+                      onClick={() => setTab('home')}
+                      style={{
+                        fontSize:11, color:'#f5a623', background:'rgba(245,166,35,.08)',
+                        border:'1px solid rgba(245,166,35,.3)', borderRadius:6,
+                        padding:'4px 10px', cursor:'pointer', flexShrink:0, marginLeft:12
+                      }}
+                    >
+                      Set zone →
+                    </button>
+                  )}
                 </div>
 
                 {requests.length === 0 ? (
@@ -537,7 +634,7 @@ export default function DriverDashboard() {
                   </div>
                   <div style={S.cardBody}>
 
-                    {/* ── OTP — always shown, fetched from server ── */}
+                    {/* OTP display */}
                     <div style={{
                       background:'rgba(45,212,160,.06)', border:'1px solid rgba(45,212,160,.2)',
                       borderRadius:12, padding:'16px', marginBottom:20, textAlign:'center'
@@ -650,7 +747,7 @@ export default function DriverDashboard() {
                         Rider: {r.rider_name} · {r.estimated_km} km
                       </div>
                       <div style={{fontSize:11, color:'#4a5270', marginTop:2}}>
-                        {r.start_time ? new Date(r.start_time).toLocaleDateString('en-IN',{
+                        {r.start_time ? new Date(r.start_time).toLocaleDateString('en-IN', {
                           day:'numeric', month:'short', year:'numeric',
                           hour:'2-digit', minute:'2-digit'
                         }) : '—'}
@@ -694,13 +791,14 @@ export default function DriverDashboard() {
                   <div style={{fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:700, color:'#e8eaf0', marginBottom:4}}>
                     {profile.full_name}
                   </div>
-                  <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>Driver · Delhi NCR</div>
+                  <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>Driver · {currentZoneName || 'Delhi NCR'}</div>
                   {[
                     ['Email',        profile.email],
                     ['Phone',        profile.phone],
                     ['Avg Rating',   `★ ${parseFloat(profile.avg_rating||0).toFixed(2)}`],
                     ['Total Rides',  profile.total_rides || 0],
                     ['Total Earned', `₹${parseFloat(profile.total_earned||0).toFixed(0)}`],
+                    ['Operating Zone', currentZoneName || '—'],
                     ['Member Since', new Date(profile.created_at).toLocaleDateString('en-IN',{month:'long',year:'numeric'})],
                   ].map(([k,v]) => (
                     <div key={k} style={{

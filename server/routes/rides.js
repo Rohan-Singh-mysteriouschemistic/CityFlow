@@ -9,6 +9,8 @@ const {
   startRide,
   completeRide,
   cancelRide,
+  cancelPendingRequest,
+  getUnratedRide,
   getRide,
   rateRide,
   getRiderHistory,
@@ -22,9 +24,11 @@ const { ROLES } = require('../config/constants');
 router.get('/zones', getZones);
 
 // ── RIDER ─────────────────────────────────────
-router.post('/request',            protect, restrictTo(ROLES.RIDER),  requestRide);
-router.get('/active/rider',        protect, restrictTo(ROLES.RIDER),  getActiveRideRider);
-router.get('/history/rider',       protect, restrictTo(ROLES.RIDER),  getRiderHistory);
+router.post('/request',                        protect, restrictTo(ROLES.RIDER),  requestRide);
+router.delete('/request/:request_id/cancel',   protect, restrictTo(ROLES.RIDER),  cancelPendingRequest);
+router.get('/active/rider',                    protect, restrictTo(ROLES.RIDER),  getActiveRideRider);
+router.get('/unrated/rider',                   protect, restrictTo(ROLES.RIDER),  getUnratedRide);
+router.get('/history/rider',                   protect, restrictTo(ROLES.RIDER),  getRiderHistory);
 
 // ── DRIVER ────────────────────────────────────
 // NOTE: /available and /active/driver must come before /:ride_id

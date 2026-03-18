@@ -513,6 +513,67 @@ const rateRide = async (req, res) => {
   }
 };
 
+// ── CANCEL PENDING REQUEST (before any driver has accepted) ─────────────────
+const cancelPendingRequest = async (req, res) => {
+  const { request_id } = req.params;
+  try {
+    const [rows] = await db.execute(
+      `SELECT request_id, rider_id, status FROM ride_requests WHERE request_id = ?`,
+      [request_id]
+    );
+    if (rows.length === 0) return res.status(404).json({ message: 'Request not found' });
+    const rq = rows[0];
+    if (rq.rider_id !== req.user.user_id) {
+      return res.status(403).json({ message: 'Not your request' });
+    }
+    if (rq.status !== 'pending') {
+      return res.status(400).json({ message: 'Request is no longer pending and cannot be cancelled' });
+    }
+    await db.execute(
+      `UPDATE ride_requests SET status = 'cancelled' WHERE request_id = ?`,
+      [request_id]
+    );
+    res.json({ message: 'Ride request cancelled successfully' });
+  } catch (err) {
+    console.error('cancelPendingRequest error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ── GET UNRATED COMPLETED RIDE (rider) ───────────────────────────────────────────
+// Returns the most recent ride that the rider completed but hasn't rated yet.
+// The client polls this to know when to show the post-ride rating overlay.
+const getUnratedRide = async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT r.ride_id, r.status, r.end_time,
+              rq.pickup_address, rq.drop_address,
+              p.total_amount,
+              u.full_name  AS driver_name,
+              dp.avg_rating AS driver_avg_rating,
+              v.make, v.model, v.color
+       FROM rides r
+       JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+       JOIN ride_requests    rq ON rq.request_id    = ra.request_id
+       JOIN users u             ON u.user_id         = ra.driver_id
+       JOIN driver_profiles dp  ON dp.driver_id      = ra.driver_id
+       JOIN vehicles v          ON v.driver_id        = ra.driver_id
+       LEFT JOIN payments p     ON p.ride_id          = r.ride_id
+       WHERE rq.rider_id = ?
+         AND r.status = 'completed'
+         AND r.rider_rating IS NULL
+       ORDER BY r.end_time DESC
+       LIMIT 1`,
+      [req.user.user_id]
+    );
+    if (rows.length === 0) return res.json({ ride: null });
+    res.json({ ride: rows[0] });
+  } catch (err) {
+    console.error('getUnratedRide error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // ── HISTORY ───────────────────────────────────────────────────────────────────
 const getRiderHistory = async (req, res) => {
   try {
@@ -551,6 +612,8 @@ module.exports = {
   startRide,
   completeRide,
   cancelRide,
+  cancelPendingRequest,
+  getUnratedRide,
   getRide,
   rateRide,
   getRiderHistory,
