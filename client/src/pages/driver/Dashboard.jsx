@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/axios'
 import toast from 'react-hot-toast'
@@ -20,12 +20,14 @@ const S = {
   },
   logoName: { fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:700, color:'#e8eaf0' },
   nav: { padding:'12px 8px', flex:1 },
-  navItem: (active) => ({
+  navItem: (active, disabled) => ({
     display:'flex', alignItems:'center', gap:10, padding:'9px 12px',
-    borderRadius:8, cursor:'pointer', fontSize:13, marginBottom:2,
+    borderRadius:8, cursor: disabled ? 'not-allowed' : 'pointer', fontSize:13, marginBottom:2,
     background: active ? 'rgba(45,212,160,.1)' : 'transparent',
-    color: active ? '#2dd4a0' : '#8b93a8', fontWeight: active ? 500 : 400,
-    border:'none', width:'100%', textAlign:'left', transition:'.15s'
+    color: disabled ? '#3a3f50' : active ? '#2dd4a0' : '#8b93a8',
+    fontWeight: active ? 500 : 400,
+    border:'none', width:'100%', textAlign:'left', transition:'.15s',
+    opacity: disabled ? 0.5 : 1
   }),
   main: { flex:1, display:'flex', flexDirection:'column', overflow:'auto' },
   topbar: {
@@ -86,28 +88,107 @@ const S = {
 
 export default function DriverDashboard() {
   const { user, logout } = useAuth()
-  const [tab,       setTab]       = useState('home')
-  const [profile,   setProfile]   = useState(null)
-  const [history,   setHistory]   = useState([])
-  const [available, setAvailable] = useState(false)
+  const [tab,        setTab]        = useState('home')
+  const [profile,    setProfile]    = useState(null)
+  const [history,    setHistory]    = useState([])
+  const [available,  setAvailable]  = useState(false)
   const [activeRide, setActiveRide] = useState(null)
-  const [otp,       setOtp]       = useState('')
-  const [loading,   setLoading]   = useState(false)
+  const [otp,        setOtp]        = useState('')
+  const [loading,    setLoading]    = useState(false)
+  const [requests,   setRequests]   = useState([])
+  const [accepting,  setAccepting]  = useState(null)   // request_id being accepted
+  const prevRequestIds = useRef([])
 
+  // ── initial load ──────────────────────────────────────────
   useEffect(() => {
     api.get('/auth/me').then(r => {
       setProfile(r.data.user)
       setAvailable(r.data.user.is_available || false)
     })
     loadHistory()
+    checkActiveRide()
   }, [])
+
+  // ── polling every 5 s ────────────────────────────────────
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkActiveRide()
+      if (!activeRide) loadRequests()   // only poll requests when not on a ride
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [tab, activeRide])
+
+  // ── notify driver when a NEW request appears in their zone ─
+  useEffect(() => {
+    if (requests.length === 0) return
+    const currentIds = requests.map(r => r.request_id)
+    const isFirstLoad = prevRequestIds.current.length === 0
+    if (!isFirstLoad) {
+      const newOnes = currentIds.filter(id => !prevRequestIds.current.includes(id))
+      if (newOnes.length > 0) {
+        toast('🚖 New ride request in your zone!', {
+          duration: 4000,
+          style: {
+            background: '#111318', color: '#e8eaf0',
+            border: '1px solid #2dd4a0', borderRadius: 10
+          }
+        })
+        // auto-switch to requests tab if driver is online and has no active ride
+        if (available && !activeRide) setTab('requests')
+      }
+    }
+    prevRequestIds.current = currentIds
+  }, [requests])
+
+  const loadRequests = async () => {
+    try {
+      const r = await api.get('/rides/available')
+      setRequests(r.data.requests || [])
+    } catch {}
+  }
+
+  const checkActiveRide = async () => {
+    try {
+      const r = await api.get('/rides/active/driver')
+      if (r.data.ride) {
+        setActiveRide(r.data.ride)
+      } else {
+        setActiveRide(null)
+      }
+    } catch {}
+  }
+
+  // ── accept: first-come-first-served ──────────────────────
+  const acceptRequest = async (request_id) => {
+    if (activeRide) {
+      toast.error('Complete your current ride before accepting a new one')
+      return
+    }
+    setAccepting(request_id)
+    try {
+      const { data } = await api.post(`/rides/accept/${request_id}`)
+      toast.success(`Ride accepted! OTP: ${data.otp}`)
+      await checkActiveRide()
+      setTab('active')
+      loadRequests()
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Could not accept ride'
+      // backend returns 409 when ride already taken
+      if (err.response?.status === 409) {
+        toast.error('Ride was already accepted by another driver')
+        loadRequests()   // refresh to remove stale request
+      } else {
+        toast.error(msg)
+      }
+    } finally {
+      setAccepting(null)
+    }
+  }
 
   const loadHistory = async () => {
     try {
       const r = await api.get('/rides/history/driver')
       setHistory(r.data.rides)
-      const active = r.data.rides.find(r => ['accepted','in_progress'].includes(r.status))
-      if (active) setActiveRide(active)
     } catch {}
   }
 
@@ -117,6 +198,7 @@ export default function DriverDashboard() {
       setAvailable(newVal)
       await api.patch(`/drivers/availability`, { is_available: newVal })
       toast.success(newVal ? 'You are now online' : 'You are now offline')
+      if (newVal) loadRequests()
     } catch {
       setAvailable(v => !v)
       toast.error('Failed to update status')
@@ -129,7 +211,7 @@ export default function DriverDashboard() {
     try {
       await api.patch(`/rides/${ride_id}/start`, { otp })
       toast.success('Ride started!')
-      loadHistory()
+      await checkActiveRide()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to start ride')
     } finally {
@@ -143,7 +225,9 @@ export default function DriverDashboard() {
       await api.patch(`/rides/${ride_id}/complete`, { actual_km: 12, payment_method: 'upi' })
       toast.success('Ride completed!')
       setActiveRide(null)
+      setOtp('')
       loadHistory()
+      setTab('home')
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to complete ride')
     } finally {
@@ -151,12 +235,28 @@ export default function DriverDashboard() {
     }
   }
 
-  const totalEarned  = history.reduce((s,r) => s + parseFloat(r.total_amount||0), 0)
-  const completedCnt = history.filter(r => r.status === 'completed').length
-  const avgRating    = profile?.avg_rating || 0
+  const hasActiveRide   = !!activeRide
+  const totalEarned     = history.reduce((s,r) => s + parseFloat(r.total_amount||0), 0)
+  const completedCnt    = history.filter(r => r.status === 'completed').length
+  const avgRating       = profile?.avg_rating || 0
+  const todayRides      = history.filter(r =>
+    r.status==='completed' && new Date(r.start_time).toDateString()===new Date().toDateString()
+  )
+
+  // ── nav items — Requests locked when driver has active ride ─
+  const navItems = [
+    { id:'home',     label:'Dashboard',   icon:'📊', disabled: false },
+    { id:'requests', label:'Requests',    icon:'📬',
+      disabled: hasActiveRide,
+      badge: !hasActiveRide && requests.length > 0 ? requests.length : null },
+    { id:'active',   label:'Active Ride', icon:'🚗', disabled: false },
+    { id:'history',  label:'My Rides',    icon:'🕒', disabled: false },
+    { id:'profile',  label:'Profile',     icon:'👤', disabled: false },
+  ]
 
   return (
     <div style={S.shell}>
+      {/* ── SIDEBAR ── */}
       <aside style={S.sidebar}>
         <div style={S.logo}>
           <div style={S.logoIcon}>
@@ -167,18 +267,32 @@ export default function DriverDashboard() {
           </div>
           <span style={S.logoName}>CityFlow</span>
         </div>
+
         <nav style={S.nav}>
-          {[
-            { id:'home',    label:'Dashboard',   icon:'📊' },
-            { id:'active',  label:'Active Ride', icon:'🚗' },
-            { id:'history', label:'My Rides',    icon:'🕒' },
-            { id:'profile', label:'Profile',     icon:'👤' },
-          ].map(item => (
-            <button key={item.id} style={S.navItem(tab===item.id)} onClick={() => setTab(item.id)}>
-              <span style={{fontSize:15}}>{item.icon}</span> {item.label}
+          {navItems.map(item => (
+            <button
+              key={item.id}
+              style={S.navItem(tab===item.id, item.disabled)}
+              onClick={() => !item.disabled && setTab(item.id)}
+              title={item.disabled ? 'Complete your active ride first' : ''}
+            >
+              <span style={{fontSize:15}}>{item.icon}</span>
+              <span style={{flex:1}}>{item.label}</span>
+              {item.badge && (
+                <span style={{
+                  background:'#f06060', color:'#fff',
+                  borderRadius:'50%', width:18, height:18,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:10, fontWeight:700, flexShrink:0
+                }}>{item.badge}</span>
+              )}
+              {item.disabled && (
+                <span style={{fontSize:10, color:'#3a3f50'}}>🔒</span>
+              )}
             </button>
           ))}
         </nav>
+
         <div style={{padding:'8px', borderTop:'1px solid #2a2f3e'}}>
           <div style={{padding:'10px 12px 6px', fontSize:12, color:'#4a5270'}}>
             Signed in as
@@ -188,18 +302,27 @@ export default function DriverDashboard() {
         </div>
       </aside>
 
+      {/* ── MAIN ── */}
       <div style={S.main}>
+        {/* topbar */}
         <div style={S.topbar}>
           <div>
             <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
-              {tab === 'home'    && 'Driver Dashboard'}
-              {tab === 'active'  && 'Active Ride'}
-              {tab === 'history' && 'Ride History'}
-              {tab === 'profile' && 'My Profile'}
+              {tab==='home'     && 'Driver Dashboard'}
+              {tab==='requests' && 'Ride Requests'}
+              {tab==='active'   && 'Active Ride'}
+              {tab==='history'  && 'Ride History'}
+              {tab==='profile'  && 'My Profile'}
             </div>
             <div style={{fontSize:12, color:'#8b93a8'}}>Delhi · CityFlow Driver</div>
           </div>
           <div style={{display:'flex', alignItems:'center', gap:12}}>
+            {hasActiveRide && (
+              <span style={{fontSize:11, color:'#4f8cff', fontWeight:600,
+                background:'rgba(79,140,255,.1)', padding:'4px 10px', borderRadius:20}}>
+                🚗 On a ride
+              </span>
+            )}
             <span style={{fontSize:12, color: available ? '#2dd4a0' : '#8b93a8'}}>
               {available ? '● Online' : '○ Offline'}
             </span>
@@ -218,8 +341,35 @@ export default function DriverDashboard() {
                 Welcome, {user?.full_name?.split(' ')[0]} 🚗
               </div>
               <div style={{fontSize:13, color:'#8b93a8', marginBottom:28}}>
-                {available ? 'You are online and accepting rides' : 'You are offline — toggle to go online'}
+                {hasActiveRide
+                  ? '🚗 You have an active ride in progress'
+                  : available
+                    ? 'You are online and accepting rides'
+                    : 'You are offline — toggle to go online'}
               </div>
+
+              {/* Active ride banner */}
+              {hasActiveRide && (
+                <div style={{
+                  background:'rgba(79,140,255,.08)', border:'1px solid rgba(79,140,255,.3)',
+                  borderRadius:12, padding:'16px 20px', marginBottom:20,
+                  display:'flex', alignItems:'center', justifyContent:'space-between'
+                }}>
+                  <div>
+                    <div style={{fontSize:13, fontWeight:600, color:'#4f8cff', marginBottom:2}}>Active Ride</div>
+                    <div style={{fontSize:12, color:'#8b93a8'}}>
+                      {activeRide.pickup_address} → {activeRide.drop_address}
+                    </div>
+                  </div>
+                  <button style={{
+                    background:'linear-gradient(135deg,#2dd4a0,#4f8cff)',
+                    border:'none', borderRadius:8, padding:'8px 16px',
+                    color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer'
+                  }} onClick={() => setTab('active')}>
+                    View Ride →
+                  </button>
+                </div>
+              )}
 
               <div style={S.grid4}>
                 <div style={{...S.kpi, borderTop:'2px solid #2dd4a0'}}>
@@ -243,10 +393,9 @@ export default function DriverDashboard() {
               </div>
 
               <div style={S.grid2}>
+                {/* Availability card */}
                 <div style={S.card}>
-                  <div style={S.cardHead}>
-                    <span style={S.cardTitle}>Availability</span>
-                  </div>
+                  <div style={S.cardHead}><span style={S.cardTitle}>Availability</span></div>
                   <div style={S.cardBody}>
                     <div style={{
                       display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -268,20 +417,28 @@ export default function DriverDashboard() {
                       Go online to start receiving ride requests from riders in your zone.
                       Your rating and location determine ride matching priority.
                     </div>
+                    {hasActiveRide && (
+                      <div style={{
+                        marginTop:12, padding:'10px 14px', borderRadius:8,
+                        background:'rgba(240,96,96,.06)', border:'1px solid rgba(240,96,96,.2)',
+                        fontSize:12, color:'#f06060'
+                      }}>
+                        ⚠ Complete your current ride before accepting a new one
+                      </div>
+                    )}
                   </div>
                 </div>
 
+                {/* Today's Summary */}
                 <div style={S.card}>
-                  <div style={S.cardHead}>
-                    <span style={S.cardTitle}>Today's Summary</span>
-                  </div>
+                  <div style={S.cardHead}><span style={S.cardTitle}>Today's Summary</span></div>
                   <div style={S.cardBody}>
                     {[
-                      ['Rides Today',    history.filter(r=>r.status==='completed' && new Date(r.start_time).toDateString()===new Date().toDateString()).length],
-                      ['Earned Today',   '₹' + history.filter(r=>r.status==='completed' && new Date(r.start_time).toDateString()===new Date().toDateString()).reduce((s,r)=>s+parseFloat(r.total_amount||0),0).toFixed(0)],
-                      ['Total Rides',    completedCnt],
-                      ['Total Earned',   '₹' + totalEarned.toFixed(0)],
-                      ['Avg Rating',     '★ ' + parseFloat(avgRating).toFixed(2)],
+                      ['Rides Today',  todayRides.length],
+                      ['Earned Today', '₹' + todayRides.reduce((s,r) => s+parseFloat(r.total_amount||0), 0).toFixed(0)],
+                      ['Total Rides',  completedCnt],
+                      ['Total Earned', '₹' + totalEarned.toFixed(0)],
+                      ['Avg Rating',   '★ ' + parseFloat(avgRating).toFixed(2)],
                     ].map(([k,v]) => (
                       <div key={k} style={{
                         display:'flex', justifyContent:'space-between',
@@ -297,6 +454,78 @@ export default function DriverDashboard() {
             </>
           )}
 
+          {/* ── REQUESTS TAB ── */}
+          {tab === 'requests' && (
+            <div style={S.card}>
+              <div style={S.cardHead}>
+                <span style={S.cardTitle}>Ride Requests — Your Zone</span>
+                <button onClick={loadRequests} style={{
+                  fontSize:12, color:'#2dd4a0', background:'none', border:'none', cursor:'pointer'
+                }}>↻ Refresh</button>
+              </div>
+              <div style={S.cardBody}>
+                {/* Zone-lock notice */}
+                <div style={{
+                  background:'rgba(45,212,160,.05)', border:'1px solid rgba(45,212,160,.15)',
+                  borderRadius:10, padding:'10px 14px', marginBottom:16,
+                  fontSize:12, color:'#8b93a8'
+                }}>
+                  📍 Showing requests from riders in <strong style={{color:'#2dd4a0'}}>your zone only</strong>.
+                  First driver to accept wins the booking.
+                </div>
+
+                {requests.length === 0 ? (
+                  <div style={{textAlign:'center', padding:32, color:'#8b93a8'}}>
+                    <div style={{fontSize:32, marginBottom:12}}>📭</div>
+                    No ride requests in your zone right now.
+                    <div style={{fontSize:11, marginTop:8, color:'#4a5270'}}>Polling every 5 seconds…</div>
+                  </div>
+                ) : requests.map(r => (
+                  <div key={r.request_id} style={{
+                    background:'#181c24', borderRadius:10, padding:'16px',
+                    marginBottom:12, border:'1px solid #2a2f3e',
+                    opacity: accepting && accepting !== r.request_id ? 0.5 : 1,
+                    transition:'opacity .2s'
+                  }}>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
+                      <span style={{fontSize:13, fontWeight:600, color:'#e8eaf0'}}>{r.rider_name}</span>
+                      <span style={{fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:700, color:'#2dd4a0'}}>
+                        ₹{parseFloat(r.estimated_fare).toFixed(0)}
+                      </span>
+                    </div>
+                    <div style={{fontSize:12, color:'#8b93a8', marginBottom:4}}>
+                      📍 {r.pickup_address}
+                    </div>
+                    <div style={{fontSize:12, color:'#8b93a8', marginBottom:12}}>
+                      🏁 {r.drop_address}
+                    </div>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                      <span style={{fontSize:11, color:'#4a5270'}}>
+                        {r.estimated_km} km · {r.zone_name}
+                        {parseFloat(r.surge_multiplier) > 1 &&
+                          <span style={{color:'#f06060'}}> · ⚡{r.surge_multiplier}×</span>}
+                      </span>
+                      <button
+                        disabled={!!accepting}
+                        style={{
+                          background: accepting === r.request_id
+                            ? '#2a2f3e'
+                            : 'linear-gradient(135deg,#2dd4a0,#4f8cff)',
+                          border:'none', borderRadius:8, padding:'8px 16px',
+                          color:'#fff', fontSize:13, fontWeight:600,
+                          cursor: accepting ? 'not-allowed' : 'pointer'
+                        }}
+                        onClick={() => acceptRequest(r.request_id)}
+                      >
+                        {accepting === r.request_id ? 'Accepting…' : 'Accept →'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── ACTIVE RIDE TAB ── */}
           {tab === 'active' && (
             <div style={{maxWidth:500}}>
@@ -307,12 +536,30 @@ export default function DriverDashboard() {
                     <span style={S.pill(activeRide.status)}>{activeRide.status?.replace('_',' ')}</span>
                   </div>
                   <div style={S.cardBody}>
+
+                    {/* ── OTP — always shown, fetched from server ── */}
+                    <div style={{
+                      background:'rgba(45,212,160,.06)', border:'1px solid rgba(45,212,160,.2)',
+                      borderRadius:12, padding:'16px', marginBottom:20, textAlign:'center'
+                    }}>
+                      <div style={{fontSize:11, color:'#8b93a8', marginBottom:6, textTransform:'uppercase', letterSpacing:1}}>
+                        Rider OTP — verify before starting
+                      </div>
+                      <div style={{
+                        fontFamily:"'Syne',sans-serif", fontSize:36, fontWeight:800,
+                        color:'#2dd4a0', letterSpacing:10
+                      }}>
+                        {activeRide.otp || '••••'}
+                      </div>
+                    </div>
+
+                    {/* Ride details */}
                     {[
                       ['Rider',    activeRide.rider_name],
                       ['Pickup',   activeRide.pickup_address],
                       ['Drop',     activeRide.drop_address],
                       ['Distance', `${activeRide.estimated_km} km`],
-                      ['Fare',     `₹${parseFloat(activeRide.total_amount||0).toFixed(0)}`],
+                      ['Fare',     `₹${parseFloat(activeRide.total_amount || activeRide.estimated_fare || 0).toFixed(0)}`],
                     ].map(([k,v]) => (
                       <div key={k} style={{
                         display:'flex', justifyContent:'space-between',
@@ -323,14 +570,22 @@ export default function DriverDashboard() {
                       </div>
                     ))}
 
+                    {/* OTP input to start ride */}
                     {activeRide.status === 'accepted' && (
                       <div style={{marginTop:20}}>
-                        <div style={{fontSize:12, color:'#8b93a8', marginBottom:8}}>Enter Rider OTP to start</div>
-                        <input style={{...S.input, marginBottom:12, letterSpacing:8, fontSize:20, textAlign:'center'}}
+                        <div style={{fontSize:12, color:'#8b93a8', marginBottom:8}}>
+                          Enter the 4-digit OTP the rider shares with you
+                        </div>
+                        <input
+                          style={{...S.input, marginBottom:12, letterSpacing:8, fontSize:20, textAlign:'center'}}
                           placeholder="_ _ _ _" maxLength={4}
-                          value={otp} onChange={e => setOtp(e.target.value)} />
-                        <button style={{...S.btn, opacity:loading?0.7:1}}
-                          onClick={() => startRide(activeRide.ride_id)} disabled={loading}>
+                          value={otp} onChange={e => setOtp(e.target.value)}
+                        />
+                        <button
+                          style={{...S.btn, opacity:loading?0.7:1}}
+                          onClick={() => startRide(activeRide.ride_id)}
+                          disabled={loading}
+                        >
                           {loading ? 'Starting...' : '▶ Start Ride'}
                         </button>
                       </div>
@@ -338,8 +593,11 @@ export default function DriverDashboard() {
 
                     {activeRide.status === 'in_progress' && (
                       <div style={{marginTop:20}}>
-                        <button style={{...S.btn, opacity:loading?0.7:1}}
-                          onClick={() => completeRide(activeRide.ride_id)} disabled={loading}>
+                        <button
+                          style={{...S.btn, opacity:loading?0.7:1}}
+                          onClick={() => completeRide(activeRide.ride_id)}
+                          disabled={loading}
+                        >
                           {loading ? 'Completing...' : '✓ Complete Ride'}
                         </button>
                       </div>
@@ -352,9 +610,16 @@ export default function DriverDashboard() {
                   <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:600, color:'#e8eaf0', marginBottom:8}}>
                     No active ride
                   </div>
-                  <div style={{fontSize:13, color:'#8b93a8'}}>
-                    {available ? 'Waiting for ride requests...' : 'Go online to receive rides'}
+                  <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>
+                    {available ? 'Waiting for ride requests…' : 'Go online to receive rides'}
                   </div>
+                  <button style={{
+                    background:'linear-gradient(135deg,#2dd4a0,#4f8cff)',
+                    border:'none', borderRadius:10, padding:'10px 20px',
+                    color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer'
+                  }} onClick={() => setTab('requests')}>
+                    View Requests
+                  </button>
                 </div>
               )}
             </div>

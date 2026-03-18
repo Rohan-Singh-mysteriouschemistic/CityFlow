@@ -159,7 +159,55 @@ const seed = async () => {
     }
 
     console.log('✅ Rides and payments seeded');
+    // After all rides and payments are inserted, fix stats
+    await conn.execute(`
+    UPDATE rider_profiles rp
+    SET
+        total_rides = (
+        SELECT COUNT(*) FROM rides r
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        JOIN ride_requests rq ON rq.request_id = ra.request_id
+        WHERE rq.rider_id = rp.rider_id AND r.status = 'completed'
+        ),
+        total_spent = (
+        SELECT COALESCE(SUM(p.total_amount), 0)
+        FROM payments p
+        JOIN rides r ON r.ride_id = p.ride_id
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        JOIN ride_requests rq ON rq.request_id = ra.request_id
+        WHERE rq.rider_id = rp.rider_id AND p.payment_status = 'completed'
+        )
+    `);
 
+    await conn.execute(`
+    UPDATE driver_profiles dp
+    SET
+        total_rides = (
+        SELECT COUNT(*) FROM rides r
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        WHERE ra.driver_id = dp.driver_id AND r.status = 'completed'
+        ),
+        total_earned = (
+        SELECT COALESCE(SUM(p.total_amount), 0)
+        FROM payments p
+        JOIN rides r ON r.ride_id = p.ride_id
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        WHERE ra.driver_id = dp.driver_id AND p.payment_status = 'completed'
+        ),
+        avg_rating = (
+        SELECT COALESCE(ROUND(AVG(r.rider_rating), 2), 0)
+        FROM rides r
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        WHERE ra.driver_id = dp.driver_id AND r.rider_rating IS NOT NULL
+        ),
+        total_rating_count = (
+        SELECT COUNT(*) FROM rides r
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        WHERE ra.driver_id = dp.driver_id AND r.rider_rating IS NOT NULL
+        )
+    `);
+
+    console.log('✅ Stats recalculated');
     await conn.commit();
     console.log('🎉 Database seeded successfully!');
     console.log('');
