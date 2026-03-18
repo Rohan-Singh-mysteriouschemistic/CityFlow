@@ -380,6 +380,15 @@ INSERT INTO vehicles (driver_id, registration_no, vehicle_type, make, model, col
 (10, 'DL04GH3456', 'sedan', 'Honda',  'Amaze',  'Black',  2021),
 (11, 'DL05IJ7890', 'xl',    'Toyota', 'Crysta', 'White',  2022);
 
+-- Rider Profiles (missing from original seed data)
+INSERT INTO rider_profiles (rider_id, preferred_payment) VALUES
+(1, 'upi'),
+(2, 'card'),
+(3, 'wallet'),
+(4, 'cash'),
+(5, 'upi'),
+(6, 'upi');
+
 -- Ride Requests (5 completed rides)
 INSERT INTO ride_requests
 (rider_id, pickup_address, pickup_lat, pickup_lng, drop_address, drop_lat, drop_lng,
