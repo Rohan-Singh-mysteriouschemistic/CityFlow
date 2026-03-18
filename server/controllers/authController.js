@@ -11,6 +11,23 @@ const signToken = (user) => {
   );
 };
 
+// ── Suspension duration helpers ────────────────────────────────
+const SUSPENSION_LABELS = {
+  '1_day':    '1 Day',
+  '3_days':   '3 Days',
+  '1_week':   '1 Week',
+  'permanent':'Permanent',
+};
+
+// Convert duration enum to end datetime (null = permanent)
+const suspensionUntil = (duration) => {
+  const now = new Date();
+  if (duration === '1_day')   { now.setDate(now.getDate() + 1);  return now; }
+  if (duration === '3_days')  { now.setDate(now.getDate() + 3);  return now; }
+  if (duration === '1_week')  { now.setDate(now.getDate() + 7);  return now; }
+  return null; // permanent
+};
+
 // ── REGISTER ──────────────────────────────────
 const register = async (req, res) => {
   const { full_name, email, phone, password, role, license_no, vehicle } = req.body;
@@ -99,8 +116,9 @@ const login = async (req, res) => {
   }
 
   try {
+    // Fetch user regardless of is_active (so we can return suspension details)
     const [rows] = await db.execute(
-      'SELECT * FROM users WHERE email = ? AND is_active = TRUE',
+      'SELECT * FROM users WHERE email = ?',
       [email]
     );
 
@@ -109,10 +127,49 @@ const login = async (req, res) => {
     }
 
     const user = rows[0];
-    const isMatch = await bcrypt.compare(password, user.password_hash);
 
+    const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // ── Auto-reactivate if non-permanent suspension has expired ──
+    if (!user.is_active && user.suspension_duration !== 'permanent' && user.suspension_until) {
+      const now = new Date();
+      if (new Date(user.suspension_until) <= now) {
+        await db.execute(
+          `UPDATE users SET is_active = TRUE,
+              suspension_duration = NULL,
+              suspended_at        = NULL,
+              suspension_until    = NULL
+           WHERE user_id = ?`,
+          [user.user_id]
+        );
+        user.is_active = true;
+        user.suspension_duration = null;
+      }
+    }
+
+    // ── Block suspended users with detailed feedback ──────────────
+    if (!user.is_active) {
+      const durationLabel = SUSPENSION_LABELS[user.suspension_duration] || 'an unknown period';
+      const isPermanent   = user.suspension_duration === 'permanent';
+      const until         = user.suspension_until
+        ? new Date(user.suspension_until).toLocaleDateString('en-IN', {
+            day:'numeric', month:'long', year:'numeric'
+          })
+        : null;
+
+      return res.status(403).json({
+        code:               'ACCOUNT_SUSPENDED',
+        message:            isPermanent
+                              ? `Your account has been permanently suspended. Contact support for assistance.`
+                              : `Your account has been suspended for ${durationLabel}.${until ? ` You can log in after ${until}.` : ''}`,
+        suspension_duration: user.suspension_duration,
+        suspension_label:    durationLabel,
+        suspension_until:    user.suspension_until,
+        is_permanent:        isPermanent,
+      });
     }
 
     const token = signToken(user);
@@ -140,8 +197,10 @@ const getMe = async (req, res) => {
   try {
     const [rows] = await db.execute(
       `SELECT u.user_id, u.full_name, u.email, u.phone, u.role, u.created_at,
+              u.is_active, u.suspension_duration, u.suspension_until,
               rp.total_rides, rp.total_spent, rp.rating as rider_rating,
-              dp.avg_rating, dp.total_earned, dp.is_available, dp.is_verified
+              dp.avg_rating, dp.total_earned, dp.is_available, dp.is_verified,
+              dp.current_zone_id
        FROM users u
        LEFT JOIN rider_profiles rp ON rp.rider_id = u.user_id
        LEFT JOIN driver_profiles dp ON dp.driver_id = u.user_id
@@ -161,4 +220,4 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { register, login, getMe };
+module.exports = { register, login, getMe, suspensionUntil, SUSPENSION_LABELS };

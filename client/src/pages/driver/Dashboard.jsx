@@ -367,6 +367,32 @@ export default function DriverDashboard() {
           </div>
         </div>
 
+        {/* Task 2: Persistent verification banner for unverified drivers */}
+        {profile && !profile.is_verified && (
+          <div style={{
+            background:'rgba(245,166,35,.08)', borderBottom:'1px solid rgba(245,166,35,.25)',
+            padding:'12px 28px',
+            display:'flex', alignItems:'center', gap:12
+          }}>
+            <span style={{fontSize:18}}>⚠️</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13, fontWeight:600, color:'#f5a623', marginBottom:2}}>
+                Account Pending Verification
+              </div>
+              <div style={{fontSize:12, color:'#8b93a8'}}>
+                Your account is pending verification by the admin. You cannot accept rides until approved.
+              </div>
+            </div>
+            <span style={{
+              fontSize:10, color:'#f5a623', fontWeight:700, letterSpacing:'.5px',
+              background:'rgba(245,166,35,.1)', padding:'4px 10px', borderRadius:20,
+              whiteSpace:'nowrap'
+            }}>
+              PENDING REVIEW
+            </span>
+          </div>
+        )}
+
         <div style={S.content}>
 
           {/* ── HOME TAB ── */}

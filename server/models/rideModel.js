@@ -33,7 +33,8 @@ const getPendingRequestsForDriver = async (driver_id) => {
     `SELECT rq.request_id, rq.pickup_address, rq.drop_address,
             rq.estimated_fare, rq.estimated_km, rq.vehicle_type,
             rq.requested_at,
-            z.zone_name, z.surge_multiplier,
+            z.zone_name, z.surge_multiplier AS zone_multiplier,
+            z.surge_multiplier_admin,
             u.full_name AS rider_name
      FROM ride_requests rq
      JOIN zones z ON z.zone_id = rq.zone_id
@@ -59,7 +60,8 @@ const getPendingRequestsForDriver = async (driver_id) => {
     `SELECT rq.request_id, rq.pickup_address, rq.drop_address,
             rq.estimated_fare, rq.estimated_km, rq.vehicle_type,
             rq.requested_at,
-            z.zone_name, z.surge_multiplier,
+            z.zone_name, z.surge_multiplier AS zone_multiplier,
+            z.surge_multiplier_admin,
             u.full_name AS rider_name
      FROM ride_requests rq
      JOIN zones z ON z.zone_id = rq.zone_id
@@ -99,6 +101,8 @@ const createRide = async (assignment_id) => {
 };
 
 // ── GET RIDE BY ID (full join) ────────────────────────────────────────────────
+// NOTE: base_fare and fare_per_km were removed from zones table.
+//       Fare computation is now done in rideController using VEHICLE_BASE_FARES.
 const getRideById = async (ride_id) => {
   const [rows] = await db.execute(
     `SELECT r.*,
@@ -113,8 +117,9 @@ const getRideById = async (ride_id) => {
             dp.avg_rating      AS driver_avg_rating,
             v.make, v.model, v.color, v.registration_no,
             v.vehicle_type     AS vehicle_type_actual,
-            z.zone_name, z.surge_multiplier,
-            z.base_fare, z.fare_per_km
+            z.zone_name,
+            z.surge_multiplier       AS zone_multiplier,
+            z.surge_multiplier_admin AS surge_multiplier_admin
      FROM rides r
      JOIN ride_assignments ra  ON ra.assignment_id = r.assignment_id
      JOIN ride_requests    rq  ON rq.request_id    = ra.request_id
@@ -130,19 +135,18 @@ const getRideById = async (ride_id) => {
 };
 
 // ── RIDER HISTORY ─────────────────────────────────────────────────────────────
-// Includes otp so the rider can always see their OTP from history too
 const getRiderHistory = async (rider_id) => {
   const [rows] = await db.execute(
     `SELECT r.ride_id, r.status, r.start_time, r.end_time,
             r.rider_rating, r.otp, r.created_at,
             rq.pickup_address, rq.drop_address, rq.estimated_km,
-            rq.estimated_fare,
+            rq.estimated_fare, rq.vehicle_type,
             p.total_amount, p.payment_method,
             u.full_name  AS driver_name,
             u.phone      AS driver_phone,
             dp.avg_rating AS driver_avg_rating,
             v.vehicle_type, v.make, v.model, v.color, v.registration_no,
-            z.zone_name, z.surge_multiplier
+            z.zone_name, z.surge_multiplier AS zone_multiplier
      FROM rides r
      JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
      JOIN ride_requests    rq ON rq.request_id    = ra.request_id
@@ -164,7 +168,7 @@ const getDriverHistory = async (driver_id) => {
     `SELECT r.ride_id, r.status, r.start_time, r.end_time,
             r.rider_rating, r.created_at,
             rq.pickup_address, rq.drop_address, rq.estimated_km,
-            rq.estimated_fare,
+            rq.estimated_fare, rq.vehicle_type,
             p.total_amount, p.payment_method,
             u.full_name AS rider_name,
             u.phone     AS rider_phone

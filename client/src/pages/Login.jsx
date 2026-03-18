@@ -10,19 +10,29 @@ export default function Login() {
   const { login } = useAuth()
   const navigate  = useNavigate()
 
+  const [suspensionInfo, setSuspensionInfo] = useState(null)
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
+    setSuspensionInfo(null)
     try {
       const user = await login(email, password)
       toast.success(`Welcome back, ${user.full_name.split(' ')[0]}!`)
       navigate(`/${user.role}`)
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed')
+      const data = err.response?.data
+      if (data?.code === 'ACCOUNT_SUSPENDED') {
+        // Task 1: Show detailed suspension feedback
+        setSuspensionInfo(data)
+      } else {
+        toast.error(data?.message || 'Login failed')
+      }
     } finally {
       setLoading(false)
     }
   }
+
 
   return (
     <div style={styles.page}>
@@ -83,6 +93,38 @@ export default function Login() {
               {loading ? 'Signing in...' : 'Sign in →'}
             </button>
           </form>
+
+          {/* Task 1: Suspension feedback banner */}
+          {suspensionInfo && (
+            <div style={{
+              background:'rgba(240,96,96,.08)', border:'1px solid rgba(240,96,96,.35)',
+              borderRadius:12, padding:'16px 18px', marginBottom:20
+            }}>
+              <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:8}}>
+                <span style={{fontSize:20}}>🚫</span>
+                <span style={{fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:700, color:'#f06060'}}>
+                  Account Suspended
+                </span>
+              </div>
+              <div style={{fontSize:13, color:'#e8eaf0', lineHeight:1.6, marginBottom:suspensionInfo.suspension_until?10:0}}>
+                Your account has been suspended for{' '}
+                <strong style={{color:'#f06060'}}>{suspensionInfo.suspension_label}</strong>.
+                {suspensionInfo.is_permanent
+                  ? ' Please contact support for assistance.'
+                  : ' You will be able to log in after the suspension period ends.'}
+              </div>
+              {!suspensionInfo.is_permanent && suspensionInfo.suspension_until && (
+                <div style={{fontSize:12, color:'#8b93a8'}}>
+                  Access restored on:{' '}
+                  <strong style={{color:'#e8eaf0'}}>
+                    {new Date(suspensionInfo.suspension_until).toLocaleDateString('en-IN', {
+                      day:'numeric', month:'long', year:'numeric'
+                    })}
+                  </strong>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={styles.divider}><span>Test accounts</span></div>
           <div style={styles.testAccounts}>

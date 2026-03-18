@@ -1,6 +1,6 @@
 const db        = require('../config/db');
 const RideModel = require('../models/rideModel');
-const { RIDE_STATUS, CANCELLATION_PENALTY } = require('../config/constants');
+const { RIDE_STATUS, CANCELLATION_PENALTY, VEHICLE_BASE_FARES, PER_KM_RATE } = require('../config/constants');
 
 // ── REQUEST A RIDE ────────────────────────────────────────────────────────────
 // NEW FLOW: Creates a pending request only. Does NOT auto-assign a driver.
@@ -43,12 +43,16 @@ const requestRide = async (req, res) => {
       return res.status(404).json({ message: 'Zone not found' });
     }
 
-    const zone           = zones[0];
-    const base           = parseFloat(zone.base_fare);
-    const perKm          = parseFloat(zone.fare_per_km);
-    const surge          = parseFloat(zone.surge_multiplier);
+    const zone         = zones[0];
+    const base         = VEHICLE_BASE_FARES[vehicle_type] || VEHICLE_BASE_FARES['sedan'];
+    const perKm        = PER_KM_RATE;
+    const zoneMulti    = parseFloat(zone.surge_multiplier || 1);
+    const surgeAdmin   = parseFloat(zone.surge_multiplier_admin || 1);
+    
+    // Exact requested logic: fare = (vehicle_base_fare + distance_fare) * zoneMulti * surgeAdmin
     const distance_fare  = parseFloat(estimated_km) * perKm;
-    const estimated_fare = parseFloat(((base + distance_fare) * surge).toFixed(2));
+    const combined_mult  = zoneMulti * surgeAdmin;
+    const estimated_fare = parseFloat(((base + distance_fare) * combined_mult).toFixed(2));
 
     // Create the request in 'pending' status — no driver assigned yet
     const request_id = await RideModel.createRequest({
@@ -96,6 +100,19 @@ const acceptRequest = async (req, res) => {
   try {
     await conn.beginTransaction();
 
+    // 0. Verify driver is verified by admin — HARD BLOCK
+    const [driverProfile] = await conn.execute(
+      `SELECT is_verified FROM driver_profiles WHERE driver_id = ?`,
+      [driver_id]
+    );
+    if (!driverProfile.length || !driverProfile[0].is_verified) {
+      await conn.rollback();
+      return res.status(403).json({
+        code:    'DRIVER_NOT_VERIFIED',
+        message: 'Your account is pending verification by admin. You cannot accept rides until approved.'
+      });
+    }
+
     // 1. Check the driver has no active ride
     const [activeRide] = await conn.execute(
       `SELECT r.ride_id FROM ride_assignments ra
@@ -111,6 +128,7 @@ const acceptRequest = async (req, res) => {
         message: 'Complete your current ride before accepting a new one'
       });
     }
+
 
     // 2. Lock the request row and verify it's still pending
     const [requests] = await conn.execute(
@@ -221,7 +239,7 @@ const getActiveRideRider = async (req, res) => {
       // Also check if they have a pending (unmatched) request
       const [pending] = await db.execute(
         `SELECT request_id, pickup_address, drop_address,
-                estimated_fare, estimated_km, status
+                estimated_fare, estimated_km, vehicle_type, status
          FROM ride_requests
          WHERE rider_id = ? AND status = 'pending' AND expires_at > NOW()
          LIMIT 1`,
@@ -329,12 +347,16 @@ const completeRide = async (req, res) => {
     }
 
     const km             = parseFloat(actual_km || ride.estimated_km);
-    const perKm          = parseFloat(ride.fare_per_km || 12);
-    const surgeMulti     = parseFloat(ride.surge_multiplier || 1);
-    const base           = parseFloat(ride.base_fare || ride.estimated_fare);
+    const vehicleType    = ride.vehicle_type_actual || ride.vehicle_type;
+    const base           = VEHICLE_BASE_FARES[vehicleType] || VEHICLE_BASE_FARES['sedan'];
+    const perKm          = PER_KM_RATE;
+    const zoneMulti      = parseFloat(ride.zone_multiplier || 1);
+    const surgeAdmin     = parseFloat(ride.surge_multiplier_admin || 1);
+    
     const distance_fare  = parseFloat((km * perKm).toFixed(2));
-    const surge_amount   = parseFloat(((base + distance_fare) * (surgeMulti - 1)).toFixed(2));
-    const total_amount   = parseFloat(((base + distance_fare) * surgeMulti).toFixed(2));
+    const combined_mult  = zoneMulti * surgeAdmin;
+    const surge_amount   = parseFloat(((base + distance_fare) * (combined_mult - 1)).toFixed(2));
+    const total_amount   = parseFloat(((base + distance_fare) * combined_mult).toFixed(2));
 
     const conn = await db.getConnection();
     try {
@@ -355,7 +377,7 @@ const completeRide = async (req, res) => {
         [
           ride_id, ride.rider_id,
           base, perKm, distance_fare,
-          surgeMulti, surge_amount, total_amount,
+          combined_mult, surge_amount, total_amount,
           payment_method || 'cash'
         ]
       );

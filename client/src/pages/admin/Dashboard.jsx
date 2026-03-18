@@ -3,6 +3,13 @@ import { useAuth } from '../../context/AuthContext'
 import api from '../../api/axios'
 import toast from 'react-hot-toast'
 
+const SUSPENSION_OPTIONS = [
+  { value: '1_day',    label: '1 Day' },
+  { value: '3_days',   label: '3 Days' },
+  { value: '1_week',   label: '1 Week' },
+  { value: 'permanent', label: 'Permanent' },
+]
+
 const S = {
   shell: { display:'flex', minHeight:'100vh', background:'#0a0a0a' },
   sidebar: {
@@ -35,14 +42,12 @@ const S = {
   content: { padding:'28px', flex:1 },
   grid4: { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 },
   grid5: { display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:14, marginBottom:24 },
-  grid2: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:20 },
   kpi: (color) => ({
     background:'#111318', border:'1px solid #2a2f3e', borderRadius:12,
     padding:'18px 20px', borderTop:`2px solid ${color}`
   }),
   kpiLabel: { fontSize:11, color:'#8b93a8', textTransform:'uppercase', letterSpacing:'.6px', marginBottom:8 },
   kpiVal: { fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:700, lineHeight:1 },
-  kpiSub: { fontSize:11, color:'#4a5270', marginTop:6 },
   card: { background:'#111318', border:'1px solid #2a2f3e', borderRadius:14, overflow:'hidden', marginBottom:20 },
   cardHead: {
     padding:'16px 20px', borderBottom:'1px solid #2a2f3e',
@@ -72,28 +77,36 @@ const S = {
   actionBtn: (color) => ({
     padding:'4px 10px', borderRadius:6, border:`1px solid ${color}`,
     background:'transparent', color, fontSize:11, fontWeight:500,
-    cursor:'pointer', transition:'.15s'
+    cursor:'pointer', transition:'.15s', whiteSpace:'nowrap'
   }),
+  select: {
+    background:'#181c24', border:'1px solid #2a2f3e', borderRadius:6,
+    padding:'4px 8px', color:'#e8eaf0', fontSize:11, outline:'none',
+    cursor:'pointer'
+  },
+  multInput: {
+    background:'#181c24', border:'1px solid #2a2f3e', borderRadius:6,
+    padding:'5px 10px', color:'#e8eaf0', fontSize:12, outline:'none', width:70
+  },
   logoutBtn: {
     margin:'12px 8px', padding:'9px 12px', borderRadius:8, border:'none',
     background:'transparent', color:'#f06060', fontSize:13, cursor:'pointer',
     textAlign:'left', width:'calc(100% - 16px)'
   },
-  surgeInput: {
-    background:'#181c24', border:'1px solid #2a2f3e', borderRadius:6,
-    padding:'5px 10px', color:'#e8eaf0', fontSize:12, outline:'none', width:70
-  }
 }
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth()
-  const [tab,     setTab]     = useState('overview')
-  const [stats,   setStats]   = useState(null)
-  const [rides,   setRides]   = useState([])
-  const [drivers, setDrivers] = useState([])
-  const [riders,  setRiders]  = useState([])
-  const [zones,   setZones]   = useState([])
-  const [revenue, setRevenue] = useState([])
+  const [tab,      setTab]     = useState('overview')
+  const [stats,    setStats]   = useState(null)
+  const [rides,    setRides]   = useState([])
+  const [drivers,  setDrivers] = useState([])
+  const [riders,   setRiders]  = useState([])
+  const [zones,    setZones]   = useState([])
+  const [revenue,  setRevenue] = useState([])
+
+  // Suspension dropdown state per user: { [user_id]: duration_string }
+  const [suspendDuration, setSuspendDuration] = useState({})
 
   useEffect(() => { loadAll() }, [])
 
@@ -126,20 +139,48 @@ export default function AdminDashboard() {
     } catch { toast.error('Failed') }
   }
 
-  const toggleUser = async (user_id) => {
+  // Task 1: suspend with duration
+  const suspendUser = async (user_id) => {
+    const duration = suspendDuration[user_id] || '1_day'
     try {
-      await api.patch(`/admin/users/${user_id}/toggle`)
-      toast.success('User status updated')
+      await api.patch(`/admin/users/${user_id}/suspend`, { duration })
+      const label = SUSPENSION_OPTIONS.find(o => o.value === duration)?.label || duration
+      toast.success(`User suspended for ${label}`)
+      loadAll()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to suspend user')
+    }
+  }
+
+  const activateUser = async (user_id) => {
+    try {
+      await api.patch(`/admin/users/${user_id}/activate`)
+      toast.success('User reactivated')
       loadAll()
     } catch { toast.error('Failed') }
   }
 
-  const updateSurge = async (zone_id, surge_multiplier, is_surge_active) => {
+  // Task 5: zone multiplier
+  const updateMultiplier = async (zone_id, zone_multiplier) => {
     try {
-      await api.patch(`/admin/zones/${zone_id}/surge`, { surge_multiplier, is_surge_active })
-      toast.success('Zone updated')
+      await api.patch(`/admin/zones/${zone_id}/multiplier`, { zone_multiplier })
+      toast.success('Zone multiplier updated')
       loadAll()
-    } catch { toast.error('Failed') }
+    } catch { toast.error('Failed to update zone') }
+  }
+
+  const updateAdminSurge = async (zone_id, surge_multiplier_admin) => {
+    try {
+      await api.patch(`/admin/zones/${zone_id}/surge_admin`, { surge_multiplier_admin })
+      toast.success('Admin surge updated')
+      loadAll()
+    } catch { toast.error('Failed to update admin surge') }
+  }
+
+  const suspensionLabel = (u) => {
+    if (!u.suspension_duration) return null
+    const opt = SUSPENSION_OPTIONS.find(o => o.value === u.suspension_duration)
+    return opt?.label || u.suspension_duration
   }
 
   return (
@@ -204,11 +245,11 @@ export default function AdminDashboard() {
             <>
               <div style={S.grid5}>
                 {[
-                  { label:'Total Rides',    val: stats.total_rides,       color:'#4f8cff' },
-                  { label:'Active Now',     val: stats.active_rides,      color:'#2dd4a0' },
-                  { label:'Total Revenue',  val:`₹${parseFloat(stats.total_revenue).toFixed(0)}`, color:'#f5a623' },
-                  { label:'Total Riders',   val: stats.total_riders,      color:'#7c6aff' },
-                  { label:'Total Drivers',  val: stats.total_drivers,     color:'#f06060' },
+                  { label:'Total Rides',   val: stats.total_rides,       color:'#4f8cff' },
+                  { label:'Active Now',    val: stats.active_rides,      color:'#2dd4a0' },
+                  { label:'Total Revenue', val:`₹${parseFloat(stats.total_revenue).toFixed(0)}`, color:'#f5a623' },
+                  { label:'Total Riders',  val: stats.total_riders,      color:'#7c6aff' },
+                  { label:'Total Drivers', val: stats.total_drivers,     color:'#f06060' },
                 ].map(({label,val,color}) => (
                   <div key={label} style={S.kpi(color)}>
                     <div style={S.kpiLabel}>{label}</div>
@@ -218,10 +259,10 @@ export default function AdminDashboard() {
               </div>
               <div style={S.grid4}>
                 {[
-                  { label:"Today's Rides",    val: stats.today_rides,      color:'#4f8cff' },
-                  { label:"Today's Revenue",  val:`₹${parseFloat(stats.today_revenue).toFixed(0)}`, color:'#2dd4a0' },
-                  { label:'Available Drivers',val: stats.available_drivers, color:'#f5a623' },
-                  { label:'Avg Driver Rating',val:`★ ${stats.avg_driver_rating||0}`, color:'#7c6aff' },
+                  { label:"Today's Rides",   val: stats.today_rides,       color:'#4f8cff' },
+                  { label:"Today's Revenue", val:`₹${parseFloat(stats.today_revenue).toFixed(0)}`, color:'#2dd4a0' },
+                  { label:'Available Drivers (Active + Online)', val: stats.available_drivers, color:'#f5a623' },
+                  { label:'Avg Driver Rating', val:`★ ${stats.avg_driver_rating||0}`, color:'#7c6aff' },
                 ].map(({label,val,color}) => (
                   <div key={label} style={S.kpi(color)}>
                     <div style={S.kpiLabel}>{label}</div>
@@ -230,7 +271,6 @@ export default function AdminDashboard() {
                 ))}
               </div>
 
-              {/* Recent Rides */}
               <div style={S.card}>
                 <div style={S.cardHead}>
                   <span style={S.cardTitle}>Recent Rides</span>
@@ -318,10 +358,10 @@ export default function AdminDashboard() {
                 <span style={{fontSize:12,color:'#8b93a8'}}>{drivers.length} drivers</span>
               </div>
               <div style={{padding:'0 20px', overflowX:'auto'}}>
-                <table style={{width:'100%', borderCollapse:'collapse', minWidth:900}}>
+                <table style={{width:'100%', borderCollapse:'collapse', minWidth:1000}}>
                   <thead>
                     <tr>
-                      {['Driver','Phone','Vehicle','Rating','Rides','Earned','Status','Verified','Actions'].map(h=>(
+                      {['Driver','Phone','Vehicle','Rating','Rides','Earned','Status','Verified','Suspend Duration','Actions'].map(h=>(
                         <th key={h} style={S.th}>{h}</th>
                       ))}
                     </tr>
@@ -329,7 +369,17 @@ export default function AdminDashboard() {
                   <tbody>
                     {drivers.map(d => (
                       <tr key={d.user_id}>
-                        <td style={{...S.td,color:'#e8eaf0',fontWeight:500}}>{d.full_name}</td>
+                        <td style={{...S.td,color:'#e8eaf0',fontWeight:500}}>
+                          {d.full_name}
+                          {!d.is_active && d.suspension_duration && (
+                            <div style={{fontSize:10, color:'#f06060', marginTop:2}}>
+                              Suspended · {suspensionLabel(d)}
+                              {d.suspension_until && d.suspension_duration !== 'permanent' && (
+                                <span style={{color:'#4a5270'}}> until {new Date(d.suspension_until).toLocaleDateString('en-IN')}</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         <td style={{...S.td,color:'#8b93a8',fontSize:11}}>{d.phone}</td>
                         <td style={{...S.td,color:'#8b93a8',fontSize:11}}>
                           {d.vehicle_type?.toUpperCase()} · {d.make} {d.model}
@@ -347,16 +397,37 @@ export default function AdminDashboard() {
                             {d.is_verified?'Verified':'Pending'}
                           </span>
                         </td>
-                        <td style={{...S.td, display:'flex', gap:6}}>
+                        {/* Task 1: suspension dropdown */}
+                        <td style={S.td}>
+                          {d.is_active ? (
+                            <select
+                              style={S.select}
+                              value={suspendDuration[d.user_id] || '1_day'}
+                              onChange={e => setSuspendDuration(prev => ({...prev, [d.user_id]: e.target.value}))}
+                            >
+                              {SUSPENSION_OPTIONS.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span style={{fontSize:10, color:'#4a5270'}}>—</span>
+                          )}
+                        </td>
+                        <td style={{...S.td, display:'flex', gap:6, flexWrap:'wrap'}}>
                           {!d.is_verified && (
                             <button style={S.actionBtn('#2dd4a0')} onClick={() => verifyDriver(d.user_id)}>
                               Verify
                             </button>
                           )}
-                          <button style={S.actionBtn(d.is_active?'#f06060':'#2dd4a0')}
-                            onClick={() => toggleUser(d.user_id)}>
-                            {d.is_active ? 'Suspend' : 'Activate'}
-                          </button>
+                          {d.is_active ? (
+                            <button style={S.actionBtn('#f06060')} onClick={() => suspendUser(d.user_id)}>
+                              Suspend
+                            </button>
+                          ) : (
+                            <button style={S.actionBtn('#2dd4a0')} onClick={() => activateUser(d.user_id)}>
+                              Activate
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -374,10 +445,10 @@ export default function AdminDashboard() {
                 <span style={{fontSize:12,color:'#8b93a8'}}>{riders.length} riders</span>
               </div>
               <div style={{padding:'0 20px', overflowX:'auto'}}>
-                <table style={{width:'100%', borderCollapse:'collapse', minWidth:700}}>
+                <table style={{width:'100%', borderCollapse:'collapse', minWidth:800}}>
                   <thead>
                     <tr>
-                      {['Rider','Email','Phone','Rides','Total Spent','Payment Pref','Status','Action'].map(h=>(
+                      {['Rider','Email','Phone','Rides','Total Spent','Payment Pref','Status','Suspend Duration','Action'].map(h=>(
                         <th key={h} style={S.th}>{h}</th>
                       ))}
                     </tr>
@@ -385,7 +456,17 @@ export default function AdminDashboard() {
                   <tbody>
                     {riders.map(r => (
                       <tr key={r.user_id}>
-                        <td style={{...S.td,color:'#e8eaf0',fontWeight:500}}>{r.full_name}</td>
+                        <td style={{...S.td,color:'#e8eaf0',fontWeight:500}}>
+                          {r.full_name}
+                          {!r.is_active && r.suspension_duration && (
+                            <div style={{fontSize:10, color:'#f06060', marginTop:2}}>
+                              Suspended · {suspensionLabel(r)}
+                              {r.suspension_until && r.suspension_duration !== 'permanent' && (
+                                <span style={{color:'#4a5270'}}> until {new Date(r.suspension_until).toLocaleDateString('en-IN')}</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         <td style={{...S.td,color:'#8b93a8',fontSize:11}}>{r.email}</td>
                         <td style={{...S.td,color:'#8b93a8',fontSize:11}}>{r.phone}</td>
                         <td style={{...S.td,color:'#e8eaf0'}}>{r.total_rides||0}</td>
@@ -396,11 +477,32 @@ export default function AdminDashboard() {
                             {r.is_active?'Active':'Suspended'}
                           </span>
                         </td>
+                        {/* Task 1: suspension dropdown */}
                         <td style={S.td}>
-                          <button style={S.actionBtn(r.is_active?'#f06060':'#2dd4a0')}
-                            onClick={() => toggleUser(r.user_id)}>
-                            {r.is_active?'Suspend':'Activate'}
-                          </button>
+                          {r.is_active ? (
+                            <select
+                              style={S.select}
+                              value={suspendDuration[r.user_id] || '1_day'}
+                              onChange={e => setSuspendDuration(prev => ({...prev, [r.user_id]: e.target.value}))}
+                            >
+                              {SUSPENSION_OPTIONS.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span style={{fontSize:10, color:'#4a5270'}}>—</span>
+                          )}
+                        </td>
+                        <td style={S.td}>
+                          {r.is_active ? (
+                            <button style={S.actionBtn('#f06060')} onClick={() => suspendUser(r.user_id)}>
+                              Suspend
+                            </button>
+                          ) : (
+                            <button style={S.actionBtn('#2dd4a0')} onClick={() => activateUser(r.user_id)}>
+                              Activate
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -410,7 +512,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* ── ZONES ── */}
+          {/* ── ZONES (Task 5) ── */}
           {tab === 'zones' && (
             <div style={S.card}>
               <div style={S.cardHead}>
@@ -418,10 +520,10 @@ export default function AdminDashboard() {
                 <span style={{fontSize:12,color:'#8b93a8'}}>{zones.length} zones · Delhi NCR</span>
               </div>
               <div style={{padding:'0 20px', overflowX:'auto'}}>
-                <table style={{width:'100%', borderCollapse:'collapse', minWidth:700}}>
+                <table style={{width:'100%', borderCollapse:'collapse', minWidth:500}}>
                   <thead>
                     <tr>
-                      {['Zone','Area','Base Fare','Per KM','Surge Multiplier','Surge Active','Action'].map(h=>(
+                      {['Zone','Area','Zone Multiplier','Admin Surge','Action'].map(h=>(
                         <th key={h} style={S.th}>{h}</th>
                       ))}
                     </tr>
@@ -431,22 +533,40 @@ export default function AdminDashboard() {
                       <tr key={z.zone_id}>
                         <td style={{...S.td,color:'#e8eaf0',fontWeight:500}}>{z.zone_name}</td>
                         <td style={{...S.td,color:'#8b93a8',fontSize:11}}>{z.area_name}</td>
-                        <td style={{...S.td,color:'#f5a623',fontWeight:600}}>₹{z.base_fare}</td>
-                        <td style={{...S.td,color:'#8b93a8'}}>₹{z.fare_per_km}/km</td>
                         <td style={S.td}>
-                          <input style={S.surgeInput} type="number" step="0.1" min="1" max="5"
-                            defaultValue={z.surge_multiplier}
-                            onBlur={e => updateSurge(z.zone_id, e.target.value, z.is_surge_active)}/>
+                          <input
+                            style={S.multInput}
+                            type="number" step="0.1" min="1" max="5"
+                            defaultValue={z.zone_multiplier}
+                            id={`zone-mult-${z.zone_id}`}
+                          />
                         </td>
                         <td style={S.td}>
-                          <span style={S.pill(z.is_surge_active?'active':'cancelled')}>
-                            {z.is_surge_active?'Active':'Inactive'}
-                          </span>
+                          <input
+                            style={S.multInput}
+                            type="number" step="0.1" min="1" max="10"
+                            defaultValue={z.surge_multiplier_admin || 1.0}
+                            id={`admin-surge-${z.zone_id}`}
+                          />
                         </td>
-                        <td style={S.td}>
-                          <button style={S.actionBtn(z.is_surge_active?'#f06060':'#2dd4a0')}
-                            onClick={() => updateSurge(z.zone_id, z.surge_multiplier, !z.is_surge_active)}>
-                            {z.is_surge_active?'Deactivate':'Activate'} Surge
+                        <td style={{...S.td, display: 'flex', gap: 6}}>
+                          <button
+                            style={S.actionBtn('#4f8cff')}
+                            onClick={() => {
+                              const val = document.getElementById(`zone-mult-${z.zone_id}`).value
+                              updateMultiplier(z.zone_id, val)
+                            }}
+                          >
+                            Update Zone
+                          </button>
+                          <button
+                            style={S.actionBtn('#f5a623')}
+                            onClick={() => {
+                              const val = document.getElementById(`admin-surge-${z.zone_id}`).value
+                              updateAdminSurge(z.zone_id, val)
+                            }}
+                          >
+                            Update Surge
                           </button>
                         </td>
                       </tr>
@@ -462,10 +582,10 @@ export default function AdminDashboard() {
             <>
               <div style={S.grid4}>
                 {[
-                  { label:'Total Revenue',  val:`₹${revenue.reduce((s,r)=>s+parseFloat(r.total_revenue||0),0).toFixed(0)}`, color:'#2dd4a0' },
-                  { label:'Total Rides',    val: revenue.reduce((s,r)=>s+parseInt(r.total_rides||0),0), color:'#4f8cff' },
-                  { label:'Avg Fare',       val:`₹${(revenue.reduce((s,r)=>s+parseFloat(r.total_revenue||0),0)/Math.max(revenue.reduce((s,r)=>s+parseInt(r.total_rides||0),0),1)).toFixed(0)}`, color:'#f5a623' },
-                  { label:'Active Zones',   val: revenue.filter(r=>parseInt(r.total_rides||0)>0).length, color:'#7c6aff' },
+                  { label:'Total Revenue', val:`₹${revenue.reduce((s,r)=>s+parseFloat(r.total_revenue||0),0).toFixed(0)}`, color:'#2dd4a0' },
+                  { label:'Total Rides',   val: revenue.reduce((s,r)=>s+parseInt(r.total_rides||0),0),                     color:'#4f8cff' },
+                  { label:'Avg Fare',      val:`₹${(revenue.reduce((s,r)=>s+parseFloat(r.total_revenue||0),0)/Math.max(revenue.reduce((s,r)=>s+parseInt(r.total_rides||0),0),1)).toFixed(0)}`, color:'#f5a623' },
+                  { label:'Active Zones',  val: revenue.filter(r=>parseInt(r.total_rides||0)>0).length, color:'#7c6aff' },
                 ].map(({label,val,color}) => (
                   <div key={label} style={S.kpi(color)}>
                     <div style={S.kpiLabel}>{label}</div>

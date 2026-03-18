@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { suspensionUntil, SUSPENSION_LABELS } = require('./authController');
 
 // ── DASHBOARD STATS ───────────────────────────
 const getDashboardStats = async (req, res) => {
@@ -8,7 +9,14 @@ const getDashboardStats = async (req, res) => {
     const [[totalRevenue]]  = await db.execute(`SELECT COALESCE(SUM(total_amount),0) as total FROM payments WHERE payment_status = 'completed'`);
     const [[totalRiders]]   = await db.execute(`SELECT COUNT(*) as count FROM users WHERE role = 'rider'`);
     const [[totalDrivers]]  = await db.execute(`SELECT COUNT(*) as count FROM users WHERE role = 'driver'`);
-    const [[availDrivers]]  = await db.execute(`SELECT COUNT(*) as count FROM driver_profiles WHERE is_available = TRUE`);
+    // Task 4: Available Drivers = online + not suspended
+    const [[availDrivers]]  = await db.execute(
+      `SELECT COUNT(*) as count
+       FROM driver_profiles dp
+       JOIN users u ON u.user_id = dp.driver_id
+       WHERE dp.is_available = TRUE
+         AND u.is_active = TRUE`
+    );
     const [[todayRevenue]]  = await db.execute(`SELECT COALESCE(SUM(total_amount),0) as total FROM payments WHERE payment_status = 'completed' AND DATE(paid_at) = CURDATE()`);
     const [[todayRides]]    = await db.execute(`SELECT COUNT(*) as count FROM rides WHERE DATE(created_at) = CURDATE()`);
     const [[cancelledRides]]= await db.execute(`SELECT COUNT(*) as count FROM rides WHERE status = 'cancelled'`);
@@ -74,7 +82,7 @@ const getAllDrivers = async (req, res) => {
   try {
     const [drivers] = await db.execute(`
       SELECT u.user_id, u.full_name, u.email, u.phone,
-             u.is_active, u.created_at,
+             u.is_active, u.suspension_duration, u.suspension_until, u.created_at,
              dp.avg_rating, dp.total_rides, dp.total_earned,
              dp.is_available, dp.is_verified, dp.license_no,
              v.vehicle_type, v.make, v.model,
@@ -99,7 +107,7 @@ const getAllRiders = async (req, res) => {
   try {
     const [riders] = await db.execute(`
       SELECT u.user_id, u.full_name, u.email, u.phone,
-             u.is_active, u.created_at,
+             u.is_active, u.suspension_duration, u.suspension_until, u.created_at,
              rp.total_rides, rp.total_spent,
              rp.rating, rp.preferred_payment
       FROM users u
@@ -128,16 +136,54 @@ const verifyDriver = async (req, res) => {
   }
 };
 
-// ── TOGGLE USER STATUS ────────────────────────
-const toggleUserStatus = async (req, res) => {
+// ── SUSPEND USER (with duration) ─────────────
+const suspendUser = async (req, res) => {
+  const { user_id } = req.params;
+  const { duration } = req.body;   // '1_day' | '3_days' | '1_week' | 'permanent'
+  const validDurations = Object.keys(SUSPENSION_LABELS);
+  if (!validDurations.includes(duration)) {
+    return res.status(400).json({ message: 'Invalid suspension duration', valid: validDurations });
+  }
+  try {
+    const until = suspensionUntil(duration);
+    await db.execute(
+      `UPDATE users
+          SET is_active           = FALSE,
+              suspension_duration = ?,
+              suspended_at        = NOW(),
+              suspension_until    = ?
+       WHERE user_id = ?`,
+      [duration, until, user_id]
+    );
+    const durationLabel = SUSPENSION_LABELS[duration];
+    res.json({
+      message:   `User suspended for ${durationLabel}`,
+      duration,
+      durationLabel,
+      until,
+    });
+  } catch (err) {
+    console.error('suspendUser error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ── ACTIVATE (un-suspend) USER ─────────────────
+const activateUser = async (req, res) => {
   const { user_id } = req.params;
   try {
     await db.execute(
-      `UPDATE users SET is_active = NOT is_active WHERE user_id = ?`,
+      `UPDATE users
+          SET is_active           = TRUE,
+              suspension_duration = NULL,
+              suspended_at        = NULL,
+              suspension_until    = NULL
+       WHERE user_id = ?`,
       [user_id]
     );
-    res.json({ message: 'User status updated' });
+    res.json({ message: 'User reactivated successfully' });
   } catch (err) {
+    console.error('activateUser error:', err.message);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -165,32 +211,80 @@ const getRevenueByZone = async (req, res) => {
   }
 };
 
-// ── MANAGE ZONES ──────────────────────────────
+// ── MANAGE ZONES (Task 5 — updated query) ─────
 const getZones = async (req, res) => {
   try {
-    const [zones] = await db.execute(`SELECT * FROM zones ORDER BY zone_name`);
+    // Return zone_multiplier alias for surge_multiplier + new surge_multiplier_admin; omit base_fare/fare_per_km/is_surge_active
+    const [zones] = await db.execute(
+      `SELECT zone_id, zone_name, area_name,
+              surge_multiplier AS zone_multiplier,
+              surge_multiplier_admin,
+              center_lat, center_lng
+       FROM zones
+       ORDER BY zone_name`
+    );
     res.json({ zones });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-const updateZoneSurge = async (req, res) => {
+// ── UPDATE ZONE MULTIPLIER (Task 5) ───────────
+const updateZoneMultiplier = async (req, res) => {
   const { zone_id } = req.params;
-  const { surge_multiplier, is_surge_active } = req.body;
+  const { zone_multiplier } = req.body;
+  
+  if (zone_multiplier === undefined) {
+    return res.status(400).json({ message: 'zone_multiplier is required' });
+  }
+  
+  const mult = parseFloat(zone_multiplier);
+  if (isNaN(mult) || mult < 1 || mult > 5) {
+    return res.status(400).json({ message: 'zone_multiplier must be between 1.0 and 5.0' });
+  }
+  
   try {
     await db.execute(
-      `UPDATE zones SET surge_multiplier = ?, is_surge_active = ? WHERE zone_id = ?`,
-      [surge_multiplier, is_surge_active, zone_id]
+      `UPDATE zones SET surge_multiplier = ? WHERE zone_id = ?`,
+      [mult, zone_id]
     );
-    res.json({ message: 'Zone updated successfully' });
+    res.json({ message: 'Zone multiplier updated successfully', zone_multiplier: mult });
   } catch (err) {
+    console.error('updateZoneMultiplier error:', err.message);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
+// ── UPDATE ADMIN SURGE MULTIPLIER ─────────────
+const updateAdminSurgeMultiplier = async (req, res) => {
+  const { zone_id } = req.params;
+  const { surge_multiplier_admin } = req.body;
+  
+  if (surge_multiplier_admin === undefined) {
+    return res.status(400).json({ message: 'surge_multiplier_admin is required' });
+  }
+  
+  const mult = parseFloat(surge_multiplier_admin);
+  if (isNaN(mult) || mult < 1 || mult > 10) {
+    return res.status(400).json({ message: 'surge_multiplier_admin must be between 1.0 and 10.0' });
+  }
+  
+  try {
+    await db.execute(
+      `UPDATE zones SET surge_multiplier_admin = ? WHERE zone_id = ?`,
+      [mult, zone_id]
+    );
+    res.json({ message: 'Admin surge multiplier updated successfully', surge_multiplier_admin: mult });
+  } catch (err) {
+    console.error('updateAdminSurgeMultiplier error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
 module.exports = {
   getDashboardStats, getAllRides, getAllDrivers,
-  getAllRiders, verifyDriver, toggleUserStatus,
-  getRevenueByZone, getZones, updateZoneSurge
+  getAllRiders, verifyDriver,
+  suspendUser, activateUser,
+  getRevenueByZone, getZones, updateZoneMultiplier, updateAdminSurgeMultiplier
 };
