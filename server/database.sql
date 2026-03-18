@@ -324,97 +324,188 @@ DELIMITER ;
 -- SECTION 4: SEED DATA
 -- ─────────────────────────────────────────────
 
--- Delhi Zones (15 zones)
-INSERT INTO zones (zone_name, area_name, base_fare, fare_per_km, surge_multiplier, is_surge_active, center_lat, center_lng) VALUES
-('Connaught Place',  'Central Delhi',      45.00, 14.00, 1.0, FALSE, 28.63290000, 77.21990000),
-('Cyber City',       'Gurugram',           55.00, 15.00, 1.5, TRUE,  28.49510000, 77.08840000),
-('Noida Sector 18',  'Noida',              40.00, 12.00, 1.2, TRUE,  28.57000000, 77.32130000),
-('Saket',            'South Delhi',        38.00, 12.00, 1.0, FALSE, 28.52300000, 77.21560000),
-('Dwarka',           'West Delhi',         32.00, 11.00, 1.0, FALSE, 28.59130000, 77.04620000),
-('Rohini',           'North West Delhi',   28.00, 11.00, 1.0, FALSE, 28.73510000, 77.11480000),
-('Lajpat Nagar',     'South Delhi',        38.00, 13.00, 1.8, TRUE,  28.56770000, 77.24360000),
-('IGI Airport',      'South West Delhi',   80.00, 16.00, 1.5, TRUE,  28.55620000, 77.10010000),
-('Janakpuri',        'West Delhi',         32.00, 11.00, 1.0, FALSE, 28.62440000, 77.08320000),
-('Greater Noida',    'Greater Noida',      50.00, 13.00, 1.2, FALSE, 28.47410000, 77.50310000),
-('Hauz Khas',        'South Delhi',        42.00, 13.00, 1.3, TRUE,  28.54310000, 77.20530000),
-('Karol Bagh',       'Central Delhi',      35.00, 12.00, 1.0, FALSE, 28.65130000, 77.19010000),
-('Pitampura',        'North West Delhi',   30.00, 11.00, 1.0, FALSE, 28.69780000, 77.13140000),
-('Vasant Kunj',      'South West Delhi',   40.00, 13.00, 1.1, FALSE, 28.52190000, 77.15780000),
-('Nehru Place',      'South Delhi',        42.00, 13.00, 1.4, TRUE,  28.54820000, 77.25190000);
+-- ============================================================
+-- CityFlow Delhi — SEED DATA ONLY
+-- Run this on your existing cityflow_db that already has tables.
+-- Safe to re-run: uses INSERT IGNORE where possible.
+-- ============================================================
 
--- Users — Riders
--- password for all: test1234 (bcrypt hashed in application)
-INSERT INTO users (full_name, email, phone, password_hash, role) VALUES
-('Rohan Singh',  'rohan@cityflow.in',  '9810001001', '<bcrypt_hash>', 'rider'),
-('Arjun Sharma', 'arjun@cityflow.in',  '9810001002', '<bcrypt_hash>', 'rider'),
-('Priya Patel',  'priya@cityflow.in',  '9810001003', '<bcrypt_hash>', 'rider'),
-('Sneha Reddy',  'sneha@cityflow.in',  '9810001004', '<bcrypt_hash>', 'rider'),
-('Vikram Singh', 'vikram@cityflow.in', '9810001005', '<bcrypt_hash>', 'rider'),
-('Ananya Iyer',  'ananya@cityflow.in', '9810001006', '<bcrypt_hash>', 'rider');
+USE cityflow_db;
 
--- Users — Drivers
-INSERT INTO users (full_name, email, phone, password_hash, role) VALUES
-('Ramesh Kumar',  'ramesh@cityflow.in', '9911001001', '<bcrypt_hash>', 'driver'),
-('Suresh Yadav',  'suresh@cityflow.in', '9911001002', '<bcrypt_hash>', 'driver'),
-('Mahesh Tiwari', 'mahesh@cityflow.in', '9911001003', '<bcrypt_hash>', 'driver'),
-('Ganesh Sharma', 'ganesh@cityflow.in', '9911001004', '<bcrypt_hash>', 'driver'),
-('Paresh Jain',   'paresh@cityflow.in', '9911001005', '<bcrypt_hash>', 'driver');
+-- ─────────────────────────────────────────────
+-- STEP 1: ZONES
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO zones
+(zone_name, area_name, base_fare, fare_per_km, surge_multiplier, is_surge_active, center_lat, center_lng)
+VALUES
+('Connaught Place', 'Central Delhi',    45.00, 14.00, 1.0, FALSE, 28.63290000, 77.21990000),
+('Cyber City',      'Gurugram',         55.00, 15.00, 1.5, TRUE,  28.49510000, 77.08840000),
+('Noida Sector 18', 'Noida',            40.00, 12.00, 1.2, TRUE,  28.57000000, 77.32130000),
+('Saket',           'South Delhi',      38.00, 12.00, 1.0, FALSE, 28.52300000, 77.21560000),
+('Dwarka',          'West Delhi',       32.00, 11.00, 1.0, FALSE, 28.59130000, 77.04620000),
+('Rohini',          'North West Delhi', 28.00, 11.00, 1.0, FALSE, 28.73510000, 77.11480000),
+('Lajpat Nagar',    'South Delhi',      38.00, 13.00, 1.8, TRUE,  28.56770000, 77.24360000),
+('IGI Airport',     'South West Delhi', 80.00, 16.00, 1.5, TRUE,  28.55620000, 77.10010000),
+('Janakpuri',       'West Delhi',       32.00, 11.00, 1.0, FALSE, 28.62440000, 77.08320000),
+('Greater Noida',   'Greater Noida',    50.00, 13.00, 1.2, FALSE, 28.47410000, 77.50310000),
+('Hauz Khas',       'South Delhi',      42.00, 13.00, 1.3, TRUE,  28.54310000, 77.20530000),
+('Karol Bagh',      'Central Delhi',    35.00, 12.00, 1.0, FALSE, 28.65130000, 77.19010000),
+('Pitampura',       'North West Delhi', 30.00, 11.00, 1.0, FALSE, 28.69780000, 77.13140000),
+('Vasant Kunj',     'South West Delhi', 40.00, 13.00, 1.1, FALSE, 28.52190000, 77.15780000),
+('Nehru Place',     'South Delhi',      42.00, 13.00, 1.4, TRUE,  28.54820000, 77.25190000);
 
--- Users — Admin
-INSERT INTO users (full_name, email, phone, password_hash, role) VALUES
-('CityFlow Admin', 'admin@cityflow.in', '9999999999', '<bcrypt_hash>', 'admin');
+-- ─────────────────────────────────────────────
+-- STEP 2: USERS
+-- Password for all accounts: test1234
+-- Hash generated with bcrypt rounds=10
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO users (full_name, email, phone, password_hash, role) VALUES
+-- Riders (will get user_id 1-6)
+('Rohan Singh',  'rohan@cityflow.in',  '9810001001', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
+('Arjun Sharma', 'arjun@cityflow.in',  '9810001002', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
+('Priya Patel',  'priya@cityflow.in',  '9810001003', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
+('Sneha Reddy',  'sneha@cityflow.in',  '9810001004', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
+('Vikram Singh', 'vikram@cityflow.in', '9810001005', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
+('Ananya Iyer',  'ananya@cityflow.in', '9810001006', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'rider'),
+-- Drivers (will get user_id 7-11)
+('Ramesh Kumar',  'ramesh@cityflow.in', '9911001001', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
+('Suresh Yadav',  'suresh@cityflow.in', '9911001002', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
+('Mahesh Tiwari', 'mahesh@cityflow.in', '9911001003', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
+('Ganesh Sharma', 'ganesh@cityflow.in', '9911001004', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
+('Paresh Jain',   'paresh@cityflow.in', '9911001005', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'driver'),
+-- Admin (will get user_id 12)
+('CityFlow Admin', 'admin@cityflow.in', '9999999999', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.ucrTOwrIK', 'admin');
 
--- Driver Profiles
-INSERT INTO driver_profiles (driver_id, license_no, avg_rating, total_rating_count, is_available, is_verified, current_zone_id) VALUES
-(7,  'DL0120210001', 4.72, 312, TRUE, TRUE, 1),
-(8,  'DL0120210002', 4.45, 198, TRUE, TRUE, 2),
-(9,  'DL0120210003', 4.89, 423, TRUE, TRUE, 3),
-(10, 'DL0120210004', 4.61, 256, TRUE, TRUE, 4),
-(11, 'DL0120210005', 4.78, 389, TRUE, TRUE, 5);
+-- ─────────────────────────────────────────────
+-- STEP 3: RIDER PROFILES
+-- THIS WAS MISSING FROM THE ORIGINAL — root cause of FK failures
+-- ride_requests.rider_id → rider_profiles.rider_id
+-- payments.rider_id      → rider_profiles.rider_id
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO rider_profiles (rider_id, total_rides, total_spent, preferred_payment, rating)
+VALUES
+(1, 0, 0.00, 'upi',    5.00),
+(2, 0, 0.00, 'card',   5.00),
+(3, 0, 0.00, 'wallet', 5.00),
+(4, 0, 0.00, 'cash',   5.00),
+(5, 0, 0.00, 'upi',    5.00),
+(6, 0, 0.00, 'upi',    5.00);
 
--- Vehicles
-INSERT INTO vehicles (driver_id, registration_no, vehicle_type, make, model, color, year) VALUES
+-- ─────────────────────────────────────────────
+-- STEP 4: DRIVER PROFILES
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO driver_profiles
+(driver_id, license_no, avg_rating, total_rating_count, total_rides, total_earned, is_available, is_verified, current_zone_id)
+VALUES
+(7,  'DL0120210001', 4.72, 312, 0, 0.00, TRUE, TRUE, 1),
+(8,  'DL0120210002', 4.45, 198, 0, 0.00, TRUE, TRUE, 2),
+(9,  'DL0120210003', 4.89, 423, 0, 0.00, TRUE, TRUE, 3),
+(10, 'DL0120210004', 4.61, 256, 0, 0.00, TRUE, TRUE, 4),
+(11, 'DL0120210005', 4.78, 389, 0, 0.00, TRUE, TRUE, 5);
+
+-- ─────────────────────────────────────────────
+-- STEP 5: VEHICLES
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO vehicles
+(driver_id, registration_no, vehicle_type, make, model, color, year)
+VALUES
 (7,  'DL01AB1234', 'sedan', 'Maruti', 'Dzire',  'White',  2021),
 (8,  'DL02CD5678', 'suv',   'Toyota', 'Innova', 'Silver', 2022),
 (9,  'DL03EF9012', 'auto',  'Bajaj',  'RE',     'Yellow', 2020),
 (10, 'DL04GH3456', 'sedan', 'Honda',  'Amaze',  'Black',  2021),
 (11, 'DL05IJ7890', 'xl',    'Toyota', 'Crysta', 'White',  2022);
 
--- Ride Requests (5 completed rides)
-INSERT INTO ride_requests
-(rider_id, pickup_address, pickup_lat, pickup_lng, drop_address, drop_lat, drop_lng,
- zone_id, vehicle_type, estimated_fare, estimated_km, status, expires_at) VALUES
-(1, 'Connaught Place',   28.6139, 77.2090, 'Cyber City',        28.4951, 77.0884, 1, 'sedan', 304.00, 18.5, 'matched', DATE_ADD(NOW(), INTERVAL 5 MINUTE)),
-(2, 'Noida Sector 18',   28.5700, 77.3213, 'Saket',             28.5230, 77.2156, 3, 'sedan', 365.00, 22.0, 'matched', DATE_ADD(NOW(), INTERVAL 5 MINUTE)),
-(3, 'Lajpat Nagar',      28.5677, 77.2436, 'Hauz Khas',         28.5431, 77.2053, 7, 'auto',  197.00,  5.5, 'matched', DATE_ADD(NOW(), INTERVAL 5 MINUTE)),
-(4, 'Dwarka Sector 10',  28.5913, 77.0462, 'IGI Airport',       28.5562, 77.1001, 8, 'sedan', 408.00, 12.0, 'matched', DATE_ADD(NOW(), INTERVAL 5 MINUTE)),
-(5, 'Karol Bagh',        28.6513, 77.1901, 'Nehru Place',       28.5482, 77.2519, 1, 'sedan', 241.00, 14.0, 'matched', DATE_ADD(NOW(), INTERVAL 5 MINUTE));
+-- ─────────────────────────────────────────────
+-- STEP 6: RIDE REQUESTS
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO ride_requests
+(rider_id, pickup_address, pickup_lat, pickup_lng,
+ drop_address, drop_lat, drop_lng,
+ zone_id, vehicle_type, estimated_fare, estimated_km, status, expires_at)
+VALUES
+(1, 'Connaught Place',  28.6139, 77.2090, 'Cyber City',  28.4951, 77.0884, 1, 'sedan', 304.00, 18.5, 'matched', DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+(2, 'Noida Sector 18',  28.5700, 77.3213, 'Saket',       28.5230, 77.2156, 3, 'sedan', 365.00, 22.0, 'matched', DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+(3, 'Lajpat Nagar',     28.5677, 77.2436, 'Hauz Khas',   28.5431, 77.2053, 7, 'auto',  197.00,  5.5, 'matched', DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+(4, 'Dwarka Sector 10', 28.5913, 77.0462, 'IGI Airport', 28.5562, 77.1001, 8, 'sedan', 408.00, 12.0, 'matched', DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+(5, 'Karol Bagh',       28.6513, 77.1901, 'Nehru Place', 28.5482, 77.2519, 1, 'sedan', 241.00, 14.0, 'matched', DATE_ADD(NOW(), INTERVAL 1 YEAR));
 
--- Ride Assignments
-INSERT INTO ride_assignments (request_id, driver_id, status, response_at) VALUES
+-- ─────────────────────────────────────────────
+-- STEP 7: RIDE ASSIGNMENTS
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO ride_assignments (request_id, driver_id, status, response_at)
+VALUES
 (1, 7,  'accepted', NOW()),
 (2, 8,  'accepted', NOW()),
 (3, 9,  'accepted', NOW()),
 (4, 10, 'accepted', NOW()),
 (5, 11, 'accepted', NOW());
 
--- Rides (all completed)
-INSERT INTO rides (assignment_id, otp, start_time, end_time, actual_km, status, rider_rating) VALUES
-(1, '1234', DATE_SUB(NOW(), INTERVAL 4 HOUR), DATE_SUB(NOW(), INTERVAL 3 HOUR), 18.5, 'completed', 5),
-(2, '1234', DATE_SUB(NOW(), INTERVAL 3 HOUR), DATE_SUB(NOW(), INTERVAL 2 HOUR), 22.0, 'completed', 4),
-(3, '1234', DATE_SUB(NOW(), INTERVAL 2 HOUR), DATE_SUB(NOW(), INTERVAL 1 HOUR), 5.5,  'completed', 5),
-(4, '1234', DATE_SUB(NOW(), INTERVAL 5 HOUR), DATE_SUB(NOW(), INTERVAL 4 HOUR), 12.0, 'completed', 4),
-(5, '1234', DATE_SUB(NOW(), INTERVAL 1 HOUR), DATE_SUB(NOW(), INTERVAL 30 MINUTE), 14.0, 'completed', 5);
+-- ─────────────────────────────────────────────
+-- STEP 8: RIDES
+-- Inserted directly as 'completed' — triggers won't fire on INSERT
+-- Stats are manually synced in STEP 10 below
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO rides
+(assignment_id, otp, start_time, end_time, actual_km, status, rider_rating)
+VALUES
+(1, '1234', DATE_SUB(NOW(), INTERVAL 4 HOUR),  DATE_SUB(NOW(), INTERVAL 3 HOUR),         18.5, 'completed', 5),
+(2, '1234', DATE_SUB(NOW(), INTERVAL 3 HOUR),  DATE_SUB(NOW(), INTERVAL 2 HOUR),         22.0, 'completed', 4),
+(3, '1234', DATE_SUB(NOW(), INTERVAL 2 HOUR),  DATE_SUB(NOW(), INTERVAL 1 HOUR),          5.5, 'completed', 5),
+(4, '1234', DATE_SUB(NOW(), INTERVAL 5 HOUR),  DATE_SUB(NOW(), INTERVAL 4 HOUR),         12.0, 'completed', 4),
+(5, '1234', DATE_SUB(NOW(), INTERVAL 1 HOUR),  DATE_SUB(NOW(), INTERVAL 30 MINUTE),      14.0, 'completed', 5);
 
--- Payments
-INSERT INTO payments
+-- ─────────────────────────────────────────────
+-- STEP 9: PAYMENTS
+-- Must come after rides (FK: ride_id) and after rider_profiles (FK: rider_id)
+-- ─────────────────────────────────────────────
+INSERT IGNORE INTO payments
 (ride_id, rider_id, base_fare, fare_per_km, distance_fare,
- surge_multiplier, surge_amount, total_amount, payment_method, payment_status, paid_at) VALUES
-(1, 1, 45.00, 14.00, 259.00, 1.0, 0, 304.00, 'upi',    'completed', NOW()),
-(2, 2, 40.00, 12.00, 264.00, 1.2, 0, 365.00, 'card',   'completed', NOW()),
-(3, 3, 38.00, 13.00,  71.50, 1.8, 0, 197.00, 'wallet', 'completed', NOW()),
-(4, 4, 80.00, 16.00, 192.00, 1.5, 0, 408.00, 'cash',   'completed', NOW()),
-(5, 5, 45.00, 14.00, 196.00, 1.0, 0, 241.00, 'upi',    'completed', NOW());
+ surge_multiplier, surge_amount, discount_amount, total_amount,
+ payment_method, payment_status, paid_at)
+VALUES
+(1, 1, 45.00, 14.00, 259.00, 1.0, 0.00, 0.00, 304.00, 'upi',    'completed', NOW()),
+(2, 2, 40.00, 12.00, 264.00, 1.2, 0.00, 0.00, 365.00, 'card',   'completed', NOW()),
+(3, 3, 38.00, 13.00,  71.50, 1.8, 0.00, 0.00, 197.00, 'wallet', 'completed', NOW()),
+(4, 4, 80.00, 16.00, 192.00, 1.5, 0.00, 0.00, 408.00, 'cash',   'completed', NOW()),
+(5, 5, 45.00, 14.00, 196.00, 1.0, 0.00, 0.00, 241.00, 'upi',    'completed', NOW());
+
+-- ─────────────────────────────────────────────
+-- STEP 10: SYNC PROFILE STATS
+-- Triggers fire on UPDATE not INSERT, so we patch stats manually.
+-- These numbers match exactly what was inserted in payments above.
+-- ─────────────────────────────────────────────
+UPDATE rider_profiles SET total_rides = 1, total_spent = 304.00 WHERE rider_id = 1;
+UPDATE rider_profiles SET total_rides = 1, total_spent = 365.00 WHERE rider_id = 2;
+UPDATE rider_profiles SET total_rides = 1, total_spent = 197.00 WHERE rider_id = 3;
+UPDATE rider_profiles SET total_rides = 1, total_spent = 408.00 WHERE rider_id = 4;
+UPDATE rider_profiles SET total_rides = 1, total_spent = 241.00 WHERE rider_id = 5;
+
+UPDATE driver_profiles SET total_rides = 1, total_earned = 304.00, is_available = TRUE WHERE driver_id = 7;
+UPDATE driver_profiles SET total_rides = 1, total_earned = 365.00, is_available = TRUE WHERE driver_id = 8;
+UPDATE driver_profiles SET total_rides = 1, total_earned = 197.00, is_available = TRUE WHERE driver_id = 9;
+UPDATE driver_profiles SET total_rides = 1, total_earned = 408.00, is_available = TRUE WHERE driver_id = 10;
+UPDATE driver_profiles SET total_rides = 1, total_earned = 241.00, is_available = TRUE WHERE driver_id = 11;
+
+-- ─────────────────────────────────────────────
+-- VERIFY — run these SELECTs to confirm everything seeded correctly
+-- ─────────────────────────────────────────────
+SELECT 'zones'           AS tbl, COUNT(*) AS rows FROM zones
+UNION ALL
+SELECT 'users',            COUNT(*) FROM users
+UNION ALL
+SELECT 'rider_profiles',   COUNT(*) FROM rider_profiles
+UNION ALL
+SELECT 'driver_profiles',  COUNT(*) FROM driver_profiles
+UNION ALL
+SELECT 'vehicles',         COUNT(*) FROM vehicles
+UNION ALL
+SELECT 'ride_requests',    COUNT(*) FROM ride_requests
+UNION ALL
+SELECT 'ride_assignments', COUNT(*) FROM ride_assignments
+UNION ALL
+SELECT 'rides',            COUNT(*) FROM rides
+UNION ALL
+SELECT 'payments',         COUNT(*) FROM payments;
 
 -- ─────────────────────────────────────────────
 -- SECTION 5: TASK 4 — SQL QUERIES (15+)
