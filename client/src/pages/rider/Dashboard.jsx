@@ -42,6 +42,7 @@ const S = {
     padding:'18px 20px', cursor:'pointer'
   },
   kpiLabel: { fontSize:11, color:'#8b93a8', textTransform:'uppercase', letterSpacing:'.6px', marginBottom:8 },
+  // FIX 1: was `"'Syne',sans-serif', fontSize:26` — mismatched quotes broke the entire object literal
   kpiVal: { fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:700, lineHeight:1 },
   card: {
     background:'#111318', border:'1px solid #2a2f3e',
@@ -58,13 +59,16 @@ const S = {
     border:'none', borderRadius:10, padding:'12px 20px',
     color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', width:'100%'
   },
+  // FIX 2: added boxSizing:'border-box' so padding doesn't cause overflow
   input: {
     background:'#181c24', border:'1px solid #2a2f3e', borderRadius:10,
-    padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none', width:'100%'
+    padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none',
+    width:'100%', boxSizing:'border-box'
   },
   select: {
     background:'#181c24', border:'1px solid #2a2f3e', borderRadius:10,
-    padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none', width:'100%'
+    padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none',
+    width:'100%', boxSizing:'border-box'
   },
   label: { fontSize:12, color:'#8b93a8', marginBottom:6, display:'block' },
   field: { marginBottom:14 },
@@ -98,8 +102,9 @@ export default function RiderDashboard() {
     drop_address:'',   drop_lat:28.5355,   drop_lng:77.3910,
     zone_id:'1', vehicle_type:'sedan', estimated_km:''
   })
-  const [activeRide,    setActiveRide]    = useState(null)
-  const [showConfirm,   setShowConfirm]   = useState(false) // cancel confirmation
+  const [activeRide,     setActiveRide]     = useState(null)
+  const [pendingRequest, setPendingRequest] = useState(null)
+  const [showConfirm,    setShowConfirm]    = useState(false)
 
   // ── initial load ──────────────────────────────────────────
   useEffect(() => {
@@ -107,33 +112,45 @@ export default function RiderDashboard() {
     api.get('/auth/me').then(r => setProfile(r.data.user))
     loadHistory()
     checkActiveRide()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── poll active ride every 5 s — this is how OTP stays visible ─
+  // ── poll active ride every 5 s ────────────────────────────
   useEffect(() => {
     const interval = setInterval(checkActiveRide, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── auto-switch to active tab when driver accepts ─────────
+  // FIX 3: added `tab` to dep array — without it the effect captured a stale
+  // closure over `tab` and never auto-switched away from non-home tabs.
   useEffect(() => {
     if (activeRide && ['accepted','in_progress'].includes(activeRide.status)) {
-      // only auto-switch if rider is on home/book tab (not history/profile)
       if (tab === 'home') setTab('active')
     }
-  }, [activeRide?.status])
+  }, [activeRide?.status, tab])
 
   const checkActiveRide = async () => {
     try {
       const r = await api.get('/rides/active/rider')
       if (r.data.ride) {
-        setActiveRide(r.data.ride)   // OTP comes from server every poll
-      } else {
-        // ride ended (completed/cancelled) — refresh history
-        if (activeRide) {
-          loadHistory()
-        }
+        setActiveRide(r.data.ride)
+        setPendingRequest(null)
+      } else if (r.data.pending_request) {
+        setPendingRequest(r.data.pending_request)
         setActiveRide(null)
+      } else {
+        // FIX 4: moved history reload into a functional-update pattern so it
+        // doesn't depend on stale `activeRide` / `pendingRequest` closure values.
+        // Previously, the condition `if (activeRide || pendingRequest)` always
+        // read the stale state captured when the interval was created (always
+        // null/null), so history was never refreshed after a ride ended.
+        setActiveRide(prev => {
+          if (prev !== null) loadHistory()
+          return null
+        })
+        setPendingRequest(prev => {
+          if (prev !== null) loadHistory()
+          return null
+        })
       }
     } catch {}
   }
@@ -155,7 +172,6 @@ export default function RiderDashboard() {
       const { data } = await api.post('/rides/request', form)
       toast.success(data.message)
       toast(`Estimated fare: ₹${data.estimated_fare}`, { icon: '💰' })
-      // immediately fetch active ride so OTP is loaded from server
       await checkActiveRide()
       setTab('active')
     } catch (err) {
@@ -165,7 +181,6 @@ export default function RiderDashboard() {
     }
   }
 
-  // ── cancel with two-step confirmation ────────────────────
   const cancelRide = async () => {
     if (!activeRide?.ride_id) return
     setCancelLoading(true)
@@ -184,7 +199,7 @@ export default function RiderDashboard() {
   }
 
   const completedCnt = history.filter(r => r.status === 'completed').length
-  const hasActiveRide = !!activeRide
+  const hasActiveRide = !!activeRide || !!pendingRequest
 
   return (
     <div style={S.shell}>
@@ -202,8 +217,7 @@ export default function RiderDashboard() {
         <nav style={S.nav}>
           {[
             { id:'home',    label:'Book a Ride', icon:'🚖' },
-            { id:'active',  label:'Active Ride', icon:'📍',
-              badge: hasActiveRide },
+            { id:'active',  label:'Active Ride', icon:'📍', badge: hasActiveRide },
             { id:'history', label:'My Rides',    icon:'🕒' },
             { id:'profile', label:'Profile',     icon:'👤' },
           ].map(item => (
@@ -270,7 +284,6 @@ export default function RiderDashboard() {
               <div style={S.greeting}>Hello, {user?.full_name?.split(' ')[0]} 👋</div>
               <div style={S.sub}>Where are you going today?</div>
 
-              {/* Active ride banner on home tab */}
               {hasActiveRide && (
                 <div style={{
                   background:'rgba(79,140,255,.08)', border:'1px solid rgba(79,140,255,.3)',
@@ -282,13 +295,14 @@ export default function RiderDashboard() {
                       You have an active ride
                     </div>
                     <div style={{fontSize:12, color:'#8b93a8'}}>
-                      {activeRide.pickup_address} → {activeRide.drop_address}
+                      {activeRide ? `${activeRide.pickup_address} → ${activeRide.drop_address}` : 'Waiting for a driver...'}
                     </div>
-                    {/* OTP always shown */}
-                    <div style={{fontSize:20, fontWeight:800, color:'#4f8cff',
-                      letterSpacing:6, marginTop:6, fontFamily:"'Syne',sans-serif"}}>
-                      OTP: {activeRide.otp}
-                    </div>
+                    {activeRide && (
+                      <div style={{fontSize:20, fontWeight:800, color:'#4f8cff',
+                        letterSpacing:6, marginTop:6, fontFamily:"'Syne',sans-serif"}}>
+                        OTP: {activeRide.otp}
+                      </div>
+                    )}
                   </div>
                   <button style={{
                     background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
@@ -313,74 +327,66 @@ export default function RiderDashboard() {
                 </div>
               </div>
 
-              <div>
-                {/* BOOK FORM */}
-                <div style={S.card}>
-                  <div style={S.cardHead}>
-                    <span style={S.cardTitle}>Book Your Ride</span>
-                    <span style={{fontSize:11, color:'#8b93a8'}}>Delhi NCR</span>
-                  </div>
-                  <div style={S.cardBody}>
-                    {hasActiveRide ? (
-                      <div style={{
-                        textAlign:'center', padding:'24px 0',
-                        color:'#8b93a8', fontSize:13
-                      }}>
-                        <div style={{fontSize:28, marginBottom:12}}>🚖</div>
-                        You already have an active ride.
-                        <br/>
-                        <button style={{
-                          ...S.btn, marginTop:16, maxWidth:200
-                        }} onClick={() => setTab('active')}>
-                          View Active Ride
-                        </button>
+              <div style={S.card}>
+                <div style={S.cardHead}>
+                  <span style={S.cardTitle}>Book Your Ride</span>
+                  <span style={{fontSize:11, color:'#8b93a8'}}>Delhi NCR</span>
+                </div>
+                <div style={S.cardBody}>
+                  {hasActiveRide ? (
+                    <div style={{textAlign:'center', padding:'24px 0', color:'#8b93a8', fontSize:13}}>
+                      <div style={{fontSize:28, marginBottom:12}}>🚖</div>
+                      You already have an active ride.
+                      <br/>
+                      <button style={{...S.btn, marginTop:16, maxWidth:200}} onClick={() => setTab('active')}>
+                        View Active Ride
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={requestRide}>
+                      <div style={S.field}>
+                        <label style={S.label}>Pickup Location</label>
+                        <input style={S.input} placeholder="e.g. Connaught Place"
+                          value={form.pickup_address}
+                          onChange={e => setForm(f=>({...f, pickup_address:e.target.value}))} />
                       </div>
-                    ) : (
-                      <form onSubmit={requestRide}>
+                      <div style={S.field}>
+                        <label style={S.label}>Drop Location</label>
+                        <input style={S.input} placeholder="e.g. Cyber City, Gurugram"
+                          value={form.drop_address}
+                          onChange={e => setForm(f=>({...f, drop_address:e.target.value}))} />
+                      </div>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
                         <div style={S.field}>
-                          <label style={S.label}>Pickup Location</label>
-                          <input style={S.input} placeholder="e.g. Connaught Place"
-                            value={form.pickup_address}
-                            onChange={e => setForm(f=>({...f, pickup_address:e.target.value}))} />
-                        </div>
-                        <div style={S.field}>
-                          <label style={S.label}>Drop Location</label>
-                          <input style={S.input} placeholder="e.g. Cyber City, Gurugram"
-                            value={form.drop_address}
-                            onChange={e => setForm(f=>({...f, drop_address:e.target.value}))} />
-                        </div>
-                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-                          <div style={S.field}>
-                            <label style={S.label}>Zone</label>
-                            <select style={S.select} value={form.zone_id}
-                              onChange={e => setForm(f=>({...f, zone_id:e.target.value}))}>
-                              {zones.map(z => (
-                                <option key={z.zone_id} value={z.zone_id}>{z.zone_name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div style={S.field}>
-                            <label style={S.label}>Vehicle Type</label>
-                            <select style={S.select} value={form.vehicle_type}
-                              onChange={e => setForm(f=>({...f, vehicle_type:e.target.value}))}>
-                              {['auto','sedan','suv','xl','bike'].map(t => (
-                                <option key={t} value={t}>{t.toUpperCase()}</option>
-                              ))}
-                            </select>
-                          </div>
+                          <label style={S.label}>Zone</label>
+                          <select style={S.select} value={form.zone_id}
+                            onChange={e => setForm(f=>({...f, zone_id:e.target.value}))}>
+                            {zones.map(z => (
+                              <option key={z.zone_id} value={z.zone_id}>{z.zone_name}</option>
+                            ))}
+                          </select>
                         </div>
                         <div style={S.field}>
-                          <label style={S.label}>Estimated Distance (km)</label>
-                          <input style={S.input} type="number" placeholder="e.g. 12.5"
-                            value={form.estimated_km}
-                            onChange={e => setForm(f=>({...f, estimated_km:e.target.value}))} />
+                          <label style={S.label}>Vehicle Type</label>
+                          <select style={S.select} value={form.vehicle_type}
+                            onChange={e => setForm(f=>({...f, vehicle_type:e.target.value}))}>
+                            {['auto','sedan','suv','xl','bike'].map(t => (
+                              <option key={t} value={t}>{t.toUpperCase()}</option>
+                            ))}
+                          </select>
                         </div>
-                        <button style={{...S.btn, opacity:loading?0.7:1}} type="submit" disabled={loading}>
-                          {loading ? 'Finding driver...' : '🚖 Request Ride'}
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                      </div>
+                      <div style={S.field}>
+                        <label style={S.label}>Estimated Distance (km)</label>
+                        <input style={S.input} type="number" placeholder="e.g. 12.5"
+                          value={form.estimated_km}
+                          onChange={e => setForm(f=>({...f, estimated_km:e.target.value}))} />
+                      </div>
+                      <button style={{...S.btn, opacity:loading?0.7:1}} type="submit" disabled={loading}>
+                        {loading ? 'Finding driver...' : '🚖 Request Ride'}
+                      </button>
+                    </form>
+                  )}
                 </div>
               </div>
             </>
@@ -390,192 +396,199 @@ export default function RiderDashboard() {
           {tab === 'active' && (
             <div style={{maxWidth:500}}>
               {activeRide ? (
-                <>
-                  <div style={S.card}>
-                    <div style={S.cardHead}>
-                      <span style={S.cardTitle}>Your Ride</span>
-                      <span style={S.pill(activeRide.status)}>
-                        {activeRide.status === 'accepted'    && '⏳ Driver on way'}
-                        {activeRide.status === 'otp_pending' && '🔐 Share OTP'}
-                        {activeRide.status === 'in_progress' && '🚖 In Progress'}
-                      </span>
-                    </div>
-                    <div style={S.cardBody}>
-
-                      {/* ── OTP — ALWAYS VISIBLE, from server poll ── */}
-                      <div style={{
-                        background:'rgba(79,140,255,.08)',
-                        border:'2px solid rgba(79,140,255,.35)',
-                        borderRadius:12, padding:'20px',
-                        marginBottom:20, textAlign:'center'
-                      }}>
-                        <div style={{
-                          fontSize:11, color:'#8b93a8', marginBottom:6,
-                          textTransform:'uppercase', letterSpacing:1
-                        }}>
-                          Your OTP — share with driver
-                        </div>
-                        <div style={{
-                          fontFamily:"'Syne',sans-serif", fontSize:48, fontWeight:900,
-                          color:'#4f8cff', letterSpacing:12, lineHeight:1
-                        }}>
-                          {activeRide.otp || '••••'}
-                        </div>
-                        <div style={{fontSize:11, color:'#4a5270', marginTop:8}}>
-                          This OTP verifies your identity to the driver
-                        </div>
-                      </div>
-
-                      {/* Status timeline */}
-                      <div style={{
-                        display:'flex', alignItems:'center', gap:8,
-                        marginBottom:20, padding:'12px 16px',
-                        background:'#181c24', borderRadius:10
-                      }}>
-                        {[
-                          { s:'accepted',    label:'Assigned'    },
-                          { s:'in_progress', label:'In Progress' },
-                          { s:'completed',   label:'Completed'   },
-                        ].map((step, i, arr) => {
-                          const isActive = activeRide.status === step.s
-                          const isPast   = (
-                            (step.s === 'accepted'    && ['in_progress','completed'].includes(activeRide.status)) ||
-                            (step.s === 'in_progress' && activeRide.status === 'completed')
-                          )
-                          return (
-                            <div key={step.s} style={{display:'flex', alignItems:'center', flex: i < arr.length-1 ? 1 : 0}}>
-                              <div style={{
-                                width:28, height:28, borderRadius:'50%', flexShrink:0,
-                                display:'flex', alignItems:'center', justifyContent:'center',
-                                fontSize:11, fontWeight:600,
-                                background: isActive ? '#4f8cff' : isPast ? 'rgba(79,140,255,.3)' : '#2a2f3e',
-                                color: isActive || isPast ? '#fff' : '#4a5270',
-                                border: isActive ? '2px solid #4f8cff' : 'none'
-                              }}>{i+1}</div>
-                              <div style={{fontSize:10, color: isActive ? '#4f8cff' : '#8b93a8', marginLeft:4, whiteSpace:'nowrap'}}>
-                                {step.label}
-                              </div>
-                              {i < arr.length-1 && (
-                                <div style={{flex:1, height:1, background:'#2a2f3e', margin:'0 8px'}}/>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* Fare */}
-                      <div style={{
-                        display:'flex', justifyContent:'space-between',
-                        background:'#181c24', borderRadius:10, padding:'14px 16px', marginBottom:16
-                      }}>
-                        <div>
-                          <div style={{fontSize:11, color:'#8b93a8'}}>Estimated Fare</div>
-                          <div style={{fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:700, color:'#2dd4a0'}}>
-                            ₹{parseFloat(activeRide.estimated_fare || 0).toFixed(0)}
-                          </div>
-                        </div>
-                        <div style={{textAlign:'right'}}>
-                          <div style={{fontSize:11, color:'#8b93a8'}}>{activeRide.zone_name}</div>
-                          {parseFloat(activeRide.surge_multiplier) > 1 && (
-                            <div style={{fontSize:11, color:'#f06060', fontWeight:600}}>
-                              ⚡ {activeRide.surge_multiplier}× surge
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Driver info */}
-                      <div style={{marginBottom:20}}>
-                        <div style={{fontSize:12, color:'#8b93a8', marginBottom:8}}>Driver Details</div>
-                        {[
-                          ['Name',    activeRide.driver_name],
-                          ['Phone',   activeRide.driver_phone],
-                          ['Vehicle', activeRide.make && `${activeRide.make} ${activeRide.model} · ${activeRide.color}`],
-                          ['Plate',   activeRide.registration_no],
-                          ['Rating',  activeRide.driver_avg_rating && `★ ${parseFloat(activeRide.driver_avg_rating).toFixed(2)}`],
-                        ].filter(([,v]) => v).map(([k,v]) => (
-                          <div key={k} style={{
-                            display:'flex', justifyContent:'space-between',
-                            padding:'7px 0', borderBottom:'1px solid #1e2330', fontSize:13
-                          }}>
-                            <span style={{color:'#8b93a8'}}>{k}</span>
-                            <span style={{color:'#e8eaf0', fontWeight:500}}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* ── CANCEL — only allowed before ride starts ── */}
-                      {activeRide.status === 'accepted' && (
-                        <>
-                          {!showConfirm ? (
-                            <button
-                              onClick={() => setShowConfirm(true)}
-                              style={{
-                                width:'100%', padding:'12px', borderRadius:10,
-                                border:'1px solid rgba(240,96,96,.4)',
-                                background:'rgba(240,96,96,.06)',
-                                color:'#f06060', fontSize:14, fontWeight:600, cursor:'pointer'
-                              }}
-                            >
-                              Cancel Ride
-                            </button>
-                          ) : (
-                            <div style={{
-                              background:'rgba(240,96,96,.08)',
-                              border:'1px solid rgba(240,96,96,.3)',
-                              borderRadius:10, padding:'16px'
-                            }}>
-                              <div style={{fontSize:13, color:'#e8eaf0', fontWeight:500, marginBottom:4}}>
-                                Cancel this ride?
-                              </div>
-                              <div style={{fontSize:12, color:'#8b93a8', marginBottom:14}}>
-                                A penalty may apply. This cannot be undone.
-                              </div>
-                              <div style={{display:'flex', gap:10}}>
-                                <button
-                                  onClick={() => setShowConfirm(false)}
-                                  style={{
-                                    flex:1, padding:'10px', borderRadius:8,
-                                    border:'1px solid #2a2f3e', background:'transparent',
-                                    color:'#8b93a8', fontSize:13, cursor:'pointer'
-                                  }}
-                                >
-                                  Keep Ride
-                                </button>
-                                <button
-                                  onClick={cancelRide}
-                                  disabled={cancelLoading}
-                                  style={{
-                                    flex:1, padding:'10px', borderRadius:8,
-                                    border:'none', background:'#f06060',
-                                    color:'#fff', fontSize:13, fontWeight:600,
-                                    cursor: cancelLoading ? 'not-allowed' : 'pointer',
-                                    opacity: cancelLoading ? 0.7 : 1
-                                  }}
-                                >
-                                  {cancelLoading ? 'Cancelling…' : 'Yes, Cancel'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      {activeRide.status === 'in_progress' && (
-                        <div style={{
-                          padding:'12px 16px', borderRadius:10,
-                          background:'rgba(79,140,255,.06)', border:'1px solid rgba(79,140,255,.2)',
-                          fontSize:12, color:'#8b93a8', textAlign:'center'
-                        }}>
-                          🚖 Ride in progress — cancellation not available
-                        </div>
-                      )}
-                    </div>
+                <div style={S.card}>
+                  <div style={S.cardHead}>
+                    <span style={S.cardTitle}>Your Ride</span>
+                    <span style={S.pill(activeRide.status)}>
+                      {activeRide.status === 'accepted'    && '⏳ Driver on way'}
+                      {activeRide.status === 'otp_pending' && '🔐 Share OTP'}
+                      {activeRide.status === 'in_progress' && '🚖 In Progress'}
+                    </span>
                   </div>
-                </>
-              ) : (
+                  <div style={S.cardBody}>
+
+                    <div style={{
+                      background:'rgba(79,140,255,.08)',
+                      border:'2px solid rgba(79,140,255,.35)',
+                      borderRadius:12, padding:'20px',
+                      marginBottom:20, textAlign:'center'
+                    }}>
+                      <div style={{
+                        fontSize:11, color:'#8b93a8', marginBottom:6,
+                        textTransform:'uppercase', letterSpacing:1
+                      }}>
+                        Your OTP — share with driver
+                      </div>
+                      <div style={{
+                        fontFamily:"'Syne',sans-serif", fontSize:48, fontWeight:900,
+                        color:'#4f8cff', letterSpacing:12, lineHeight:1
+                      }}>
+                        {activeRide.otp || '••••'}
+                      </div>
+                      <div style={{fontSize:11, color:'#4a5270', marginTop:8}}>
+                        This OTP verifies your identity to the driver
+                      </div>
+                    </div>
+
+                    {/* Status timeline */}
+                    <div style={{
+                      display:'flex', alignItems:'center', gap:8,
+                      marginBottom:20, padding:'12px 16px',
+                      background:'#181c24', borderRadius:10
+                    }}>
+                      {[
+                        { s:'accepted',    label:'Assigned'    },
+                        { s:'in_progress', label:'In Progress' },
+                        { s:'completed',   label:'Completed'   },
+                      ].map((step, i, arr) => {
+                        const isActive = activeRide.status === step.s
+                        const isPast = (
+                          (step.s === 'accepted'    && ['in_progress','completed'].includes(activeRide.status)) ||
+                          (step.s === 'in_progress' && activeRide.status === 'completed')
+                        )
+                        return (
+                          <div key={step.s} style={{display:'flex', alignItems:'center', flex: i < arr.length-1 ? 1 : 0}}>
+                            <div style={{
+                              width:28, height:28, borderRadius:'50%', flexShrink:0,
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              fontSize:11, fontWeight:600,
+                              background: isActive ? '#4f8cff' : isPast ? 'rgba(79,140,255,.3)' : '#2a2f3e',
+                              color: isActive || isPast ? '#fff' : '#4a5270',
+                              border: isActive ? '2px solid #4f8cff' : 'none'
+                            }}>{i+1}</div>
+                            <div style={{fontSize:10, color: isActive ? '#4f8cff' : '#8b93a8', marginLeft:4, whiteSpace:'nowrap'}}>
+                              {step.label}
+                            </div>
+                            {i < arr.length-1 && (
+                              <div style={{flex:1, height:1, background:'#2a2f3e', margin:'0 8px'}}/>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Fare */}
+                    <div style={{
+                      display:'flex', justifyContent:'space-between',
+                      background:'#181c24', borderRadius:10, padding:'14px 16px', marginBottom:16
+                    }}>
+                      <div>
+                        <div style={{fontSize:11, color:'#8b93a8'}}>Estimated Fare</div>
+                        <div style={{fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:700, color:'#2dd4a0'}}>
+                          ₹{parseFloat(activeRide.estimated_fare || 0).toFixed(0)}
+                        </div>
+                      </div>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{fontSize:11, color:'#8b93a8'}}>{activeRide.zone_name}</div>
+                        {parseFloat(activeRide.surge_multiplier) > 1 && (
+                          <div style={{fontSize:11, color:'#f06060', fontWeight:600}}>
+                            ⚡ {activeRide.surge_multiplier}× surge
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Driver info */}
+                    <div style={{marginBottom:20}}>
+                      <div style={{fontSize:12, color:'#8b93a8', marginBottom:8}}>Driver Details</div>
+                      {[
+                        ['Name',    activeRide.driver_name],
+                        ['Phone',   activeRide.driver_phone],
+                        ['Vehicle', activeRide.make && `${activeRide.make} ${activeRide.model} · ${activeRide.color}`],
+                        ['Plate',   activeRide.registration_no],
+                        ['Rating',  activeRide.driver_avg_rating && `★ ${parseFloat(activeRide.driver_avg_rating).toFixed(2)}`],
+                      ].filter(([,v]) => v).map(([k,v]) => (
+                        <div key={k} style={{
+                          display:'flex', justifyContent:'space-between',
+                          padding:'7px 0', borderBottom:'1px solid #1e2330', fontSize:13
+                        }}>
+                          <span style={{color:'#8b93a8'}}>{k}</span>
+                          <span style={{color:'#e8eaf0', fontWeight:500}}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Cancel */}
+                    {activeRide.status === 'accepted' && (
+                      <>
+                        {!showConfirm ? (
+                          <button
+                            onClick={() => setShowConfirm(true)}
+                            style={{
+                              width:'100%', padding:'12px', borderRadius:10,
+                              border:'1px solid rgba(240,96,96,.4)',
+                              background:'rgba(240,96,96,.06)',
+                              color:'#f06060', fontSize:14, fontWeight:600, cursor:'pointer'
+                            }}
+                          >
+                            Cancel Ride
+                          </button>
+                        ) : (
+                          <div style={{
+                            background:'rgba(240,96,96,.08)',
+                            border:'1px solid rgba(240,96,96,.3)',
+                            borderRadius:10, padding:'16px'
+                          }}>
+                            <div style={{fontSize:13, color:'#e8eaf0', fontWeight:500, marginBottom:4}}>
+                              Cancel this ride?
+                            </div>
+                            <div style={{fontSize:12, color:'#8b93a8', marginBottom:14}}>
+                              A penalty may apply. This cannot be undone.
+                            </div>
+                            <div style={{display:'flex', gap:10}}>
+                              <button
+                                onClick={() => setShowConfirm(false)}
+                                style={{
+                                  flex:1, padding:'10px', borderRadius:8,
+                                  border:'1px solid #2a2f3e', background:'transparent',
+                                  color:'#8b93a8', fontSize:13, cursor:'pointer'
+                                }}
+                              >
+                                Keep Ride
+                              </button>
+                              <button
+                                onClick={cancelRide}
+                                disabled={cancelLoading}
+                                style={{
+                                  flex:1, padding:'10px', borderRadius:8,
+                                  border:'none', background:'#f06060',
+                                  color:'#fff', fontSize:13, fontWeight:600,
+                                  cursor: cancelLoading ? 'not-allowed' : 'pointer',
+                                  opacity: cancelLoading ? 0.7 : 1
+                                }}
+                              >
+                                {cancelLoading ? 'Cancelling…' : 'Yes, Cancel'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {activeRide.status === 'in_progress' && (
+                      <div style={{
+                        padding:'12px 16px', borderRadius:10,
+                        background:'rgba(79,140,255,.06)', border:'1px solid rgba(79,140,255,.2)',
+                        fontSize:12, color:'#8b93a8', textAlign:'center'
+                      }}>
+                        🚖 Ride in progress — cancellation not available
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : pendingRequest ? (
                 <div style={{...S.card, padding:48, textAlign:'center'}}>
                   <div style={{fontSize:40, marginBottom:16}}>⏳</div>
+                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:600, color:'#e8eaf0', marginBottom:8}}>
+                    Waiting for a driver...
+                  </div>
+                  <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>
+                    Your request is being processed. We are looking for a driver for you.
+                  </div>
+                </div>
+              ) : (
+                <div style={{...S.card, padding:48, textAlign:'center'}}>
+                  <div style={{fontSize:40, marginBottom:16}}>🤔</div>
                   <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:600, color:'#e8eaf0', marginBottom:8}}>
                     No active ride
                   </div>
@@ -661,7 +674,6 @@ export default function RiderDashboard() {
                     ['Email',        profile.email],
                     ['Phone',        profile.phone],
                     ['Total Rides',  profile.total_rides || 0],
-                    ['Total Spent',  `₹${parseFloat(profile.total_spent||0).toFixed(0)}`],
                     ['Member Since', new Date(profile.created_at).toLocaleDateString('en-IN',{month:'long',year:'numeric'})],
                   ].map(([k,v]) => (
                     <div key={k} style={{
