@@ -183,7 +183,6 @@ export default function RiderDashboard() {
     }
   }
 
-  const totalSpent   = history.reduce((s,r) => s + parseFloat(r.total_amount||0), 0)
   const completedCnt = history.filter(r => r.status === 'completed').length
   const hasActiveRide = !!activeRide
 
@@ -301,20 +300,10 @@ export default function RiderDashboard() {
                 </div>
               )}
 
-              <div style={S.grid4}>
+              <div style={S.grid2}>
                 <div style={{...S.kpi, borderTop:'2px solid #4f8cff'}}>
                   <div style={S.kpiLabel}>Total Rides</div>
                   <div style={{...S.kpiVal, color:'#4f8cff'}}>{completedCnt}</div>
-                </div>
-                <div style={{...S.kpi, borderTop:'2px solid #2dd4a0'}}>
-                  <div style={S.kpiLabel}>Total Spent</div>
-                  <div style={{...S.kpiVal, color:'#2dd4a0'}}>₹{totalSpent.toFixed(0)}</div>
-                </div>
-                <div style={{...S.kpi, borderTop:'2px solid #f5a623'}}>
-                  <div style={S.kpiLabel}>Avg Fare</div>
-                  <div style={{...S.kpiVal, color:'#f5a623'}}>
-                    ₹{completedCnt ? (totalSpent/completedCnt).toFixed(0) : 0}
-                  </div>
                 </div>
                 <div style={{...S.kpi, borderTop:'2px solid #7c6aff'}}>
                   <div style={S.kpiLabel}>Member Since</div>
@@ -324,7 +313,7 @@ export default function RiderDashboard() {
                 </div>
               </div>
 
-              <div style={S.grid2}>
+              <div>
                 {/* BOOK FORM */}
                 <div style={S.card}>
                   <div style={S.cardHead}>
@@ -391,35 +380,6 @@ export default function RiderDashboard() {
                         </button>
                       </form>
                     )}
-                  </div>
-                </div>
-
-                {/* ZONE FARES */}
-                <div style={S.card}>
-                  <div style={S.cardHead}>
-                    <span style={S.cardTitle}>Delhi Zone Fares</span>
-                    <span style={{fontSize:11, color:'#8b93a8'}}>15 zones</span>
-                  </div>
-                  <div style={{...S.cardBody, padding:0, maxHeight:380, overflowY:'auto'}}>
-                    {zones.map(z => (
-                      <div key={z.zone_id} style={{
-                        display:'flex', alignItems:'center', justifyContent:'space-between',
-                        padding:'11px 20px', borderBottom:'1px solid #1e2330'
-                      }}>
-                        <div>
-                          <div style={{fontSize:13, fontWeight:500, color:'#e8eaf0'}}>{z.zone_name}</div>
-                          <div style={{fontSize:11, color:'#8b93a8'}}>{z.area_name}</div>
-                        </div>
-                        <div style={{textAlign:'right'}}>
-                          <div style={{fontSize:13, fontWeight:600, color:'#e8eaf0'}}>₹{z.base_fare} base</div>
-                          {z.is_surge_active && (
-                            <span style={{fontSize:10, color:'#f06060', fontWeight:600}}>
-                              ⚡ {z.surge_multiplier}× surge
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>

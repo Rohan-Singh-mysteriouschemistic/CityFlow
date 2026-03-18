@@ -517,7 +517,6 @@ SELECT 'payments',         COUNT(*) FROM payments;
 -- SECTION 5: TASK 4 — SQL QUERIES (15+)
 -- ─────────────────────────────────────────────
 
--- Q1: All active drivers with vehicle and zone
 SELECT
     u.full_name AS driver_name,
     u.phone,
@@ -532,7 +531,7 @@ LEFT JOIN zones z ON z.zone_id  = dp.current_zone_id
 WHERE u.is_active = TRUE
 ORDER BY dp.avg_rating DESC;
 
--- Q2: All completed rides with full details
+
 SELECT
     r.ride_id,
     u_rider.full_name  AS rider_name,
@@ -554,7 +553,7 @@ JOIN payments p           ON p.ride_id        = r.ride_id
 WHERE r.status = 'completed'
 ORDER BY r.start_time DESC;
 
--- Q3: Total revenue per payment method
+
 SELECT
     payment_method,
     COUNT(*)          AS total_transactions,
@@ -565,7 +564,7 @@ WHERE payment_status = 'completed'
 GROUP BY payment_method
 ORDER BY total_revenue DESC;
 
--- Q4: Top drivers by earnings
+
 SELECT
     u.full_name AS driver_name,
     dp.avg_rating,
@@ -579,7 +578,7 @@ JOIN vehicles v ON v.driver_id = dp.driver_id
 LEFT JOIN zones z ON z.zone_id = dp.current_zone_id
 ORDER BY dp.total_earned DESC;
 
--- Q5: Riders who spent the most
+
 SELECT
     u.full_name AS rider_name,
     u.email,
@@ -591,7 +590,7 @@ FROM rider_profiles rp
 JOIN users u ON u.user_id = rp.rider_id
 ORDER BY rp.total_spent DESC;
 
--- Q6: Revenue by zone
+
 SELECT
     z.zone_name,
     z.area_name,
@@ -609,7 +608,7 @@ WHERE p.payment_status = 'completed' OR p.payment_status IS NULL
 GROUP BY z.zone_id
 ORDER BY total_revenue DESC;
 
--- Q7: Average ride duration per vehicle type
+
 SELECT
     v.vehicle_type,
     COUNT(r.ride_id) AS total_rides,
@@ -623,7 +622,7 @@ WHERE r.status = 'completed'
 GROUP BY v.vehicle_type
 ORDER BY avg_fare DESC;
 
--- Q8: Drivers who have never been rated below 4
+
 SELECT
     u.full_name AS driver_name,
     dp.avg_rating,
@@ -640,7 +639,7 @@ WHERE dp.driver_id NOT IN (
 AND dp.total_rating_count > 0
 ORDER BY dp.avg_rating DESC;
 
--- Q9: Surge zones with active rides
+
 SELECT
     z.zone_name,
     z.surge_multiplier,
@@ -653,7 +652,7 @@ WHERE z.is_surge_active = TRUE
 GROUP BY z.zone_id
 ORDER BY z.surge_multiplier DESC;
 
--- Q10: Full ride lifecycle audit
+
 SELECT
     rq.request_id,
     u_rider.full_name  AS rider,
@@ -683,7 +682,7 @@ LEFT JOIN payments     p ON p.ride_id        = r.ride_id
 LEFT JOIN cancellations c ON c.ride_id       = r.ride_id
 ORDER BY rq.requested_at DESC;
 
--- Q11: Daily revenue trend
+
 SELECT
     DATE(p.paid_at)       AS ride_date,
     COUNT(p.payment_id)   AS total_rides,
@@ -696,7 +695,7 @@ WHERE p.payment_status = 'completed'
 GROUP BY DATE(p.paid_at)
 ORDER BY ride_date DESC;
 
--- Q12: Driver ranking with dense rank
+
 SELECT
     u.full_name AS driver_name,
     dp.avg_rating,
@@ -708,7 +707,7 @@ FROM driver_profiles dp
 JOIN users u ON u.user_id = dp.driver_id
 WHERE dp.total_rides > 0;
 
--- Q13: Riders with above average spend
+
 SELECT
     u.full_name AS rider_name,
     rp.total_spent,
@@ -721,7 +720,7 @@ WHERE rp.total_spent > (
 )
 ORDER BY rp.total_spent DESC;
 
--- Q14: Cancellation analysis
+
 SELECT
     c.cancelled_by,
     COUNT(*)                        AS total_cancellations,
@@ -730,7 +729,7 @@ SELECT
 FROM cancellations c
 GROUP BY c.cancelled_by;
 
--- Q15: Zone performance comparison
+
 SELECT
     z.zone_name,
     z.area_name,
@@ -749,7 +748,7 @@ LEFT JOIN payments p          ON p.ride_id         = r.ride_id
 GROUP BY z.zone_id
 ORDER BY total_revenue DESC NULLS LAST;
 
--- Q16: Ride log audit trail
+
 SELECT
     rl.log_id,
     r.ride_id,
@@ -768,7 +767,7 @@ JOIN users u_rider        ON u_rider.user_id   = rq.rider_id
 JOIN users u_driver       ON u_driver.user_id  = ra.driver_id
 ORDER BY rl.changed_at DESC;
 
--- Q17: Payment method popularity by zone
+
 SELECT
     z.zone_name,
     p.payment_method,
