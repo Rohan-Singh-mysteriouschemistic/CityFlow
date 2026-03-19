@@ -502,37 +502,17 @@ UPDATE driver_profiles SET total_rides = 1, total_earned = 241.00, is_available 
 UPDATE driver_profiles SET total_rides = 2, total_earned = 774.00, is_available = TRUE WHERE driver_id = 17;
 UPDATE driver_profiles SET total_rides = 2, total_earned = 327.60, is_available = TRUE WHERE driver_id = 18;
 
--- VERIFY
-SELECT 'zones'           AS tbl, COUNT(*) AS rows FROM zones
-UNION ALL SELECT 'users',            COUNT(*) FROM users
-UNION ALL SELECT 'rider_profiles',   COUNT(*) FROM rider_profiles
-UNION ALL SELECT 'driver_profiles',  COUNT(*) FROM driver_profiles
-UNION ALL SELECT 'vehicles',         COUNT(*) FROM vehicles
-UNION ALL SELECT 'ride_requests',    COUNT(*) FROM ride_requests
-UNION ALL SELECT 'ride_assignments', COUNT(*) FROM ride_assignments
-UNION ALL SELECT 'rides',            COUNT(*) FROM rides
-UNION ALL SELECT 'payments',         COUNT(*) FROM payments;
 
-SET SQL_SAFE_UPDATES = 0;
+ALTER TABLE users ADD COLUMN suspension_duration ENUM('1_day','3_days','1_week','permanent') NULL DEFAULT NULL;
+ALTER TABLE users ADD COLUMN suspended_at DATETIME NULL DEFAULT NULL;
+ALTER TABLE users ADD COLUMN suspension_until DATETIME NULL DEFAULT NULL;
 
-UPDATE driver_profiles dp
-SET
-    avg_rating = COALESCE((
-        SELECT ROUND(AVG(r.rider_rating), 2)
-        FROM rides r
-        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
-        WHERE ra.driver_id = dp.driver_id
-          AND r.rider_rating IS NOT NULL
-    ), 0.00),
-    total_rating_count = COALESCE((
-        SELECT COUNT(*)
-        FROM rides r
-        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
-        WHERE ra.driver_id = dp.driver_id
-          AND r.rider_rating IS NOT NULL
-    ), 0);
+ALTER TABLE zones DROP COLUMN base_fare;
+ALTER TABLE zones DROP COLUMN fare_per_km;
+ALTER TABLE zones DROP COLUMN is_surge_active;
+ALTER TABLE zones ADD COLUMN surge_multiplier_admin DECIMAL(5,2) DEFAULT 1.0;
 
-SET SQL_SAFE_UPDATES = 1;
+ALTER TABLE ride_requests ADD COLUMN payment_method ENUM('cash','card','wallet','upi') DEFAULT 'cash';
 
 
 -- ─────────────────────────────────────────────
