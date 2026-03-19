@@ -253,11 +253,12 @@ AFTER UPDATE ON rides
 FOR EACH ROW
 BEGIN
     DECLARE v_driver_id INT;
-    IF NEW.rider_rating IS NOT NULL AND OLD.rider_rating IS NULL THEN
+    IF NEW.rider_rating IS NOT NULL
+       AND (OLD.rider_rating IS NULL OR OLD.rider_rating != NEW.rider_rating)
+    THEN
         SELECT ra.driver_id INTO v_driver_id
         FROM ride_assignments ra
         WHERE ra.assignment_id = NEW.assignment_id;
-
         UPDATE driver_profiles
         SET
             avg_rating = (
@@ -265,14 +266,14 @@ BEGIN
                 FROM rides r2
                 JOIN ride_assignments ra2 ON ra2.assignment_id = r2.assignment_id
                 WHERE ra2.driver_id = v_driver_id
-                AND r2.rider_rating IS NOT NULL
+                  AND r2.rider_rating IS NOT NULL
             ),
             total_rating_count = (
                 SELECT COUNT(*)
                 FROM rides r2
                 JOIN ride_assignments ra2 ON ra2.assignment_id = r2.assignment_id
                 WHERE ra2.driver_id = v_driver_id
-                AND r2.rider_rating IS NOT NULL
+                  AND r2.rider_rating IS NOT NULL
             )
         WHERE driver_id = v_driver_id;
     END IF;
@@ -511,6 +512,23 @@ UNION ALL SELECT 'ride_requests',    COUNT(*) FROM ride_requests
 UNION ALL SELECT 'ride_assignments', COUNT(*) FROM ride_assignments
 UNION ALL SELECT 'rides',            COUNT(*) FROM rides
 UNION ALL SELECT 'payments',         COUNT(*) FROM payments;
+
+UPDATE driver_profiles dp
+SET
+    avg_rating = COALESCE((
+        SELECT ROUND(AVG(r.rider_rating), 2)
+        FROM rides r
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        WHERE ra.driver_id = dp.driver_id
+          AND r.rider_rating IS NOT NULL
+    ), 0.00),
+    total_rating_count = COALESCE((
+        SELECT COUNT(*)
+        FROM rides r
+        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
+        WHERE ra.driver_id = dp.driver_id
+          AND r.rider_rating IS NOT NULL
+    ), 0);
 
 
 -- ─────────────────────────────────────────────
