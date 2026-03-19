@@ -7,15 +7,16 @@ const createRequest = async (data) => {
      (rider_id, pickup_address, pickup_lat, pickup_lng,
       drop_address, drop_lat, drop_lng, zone_id,
       vehicle_type, estimated_fare, estimated_km,
-      expires_at)
+      payment_method, expires_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             DATE_ADD(NOW(), INTERVAL 5 MINUTE))`,
+             ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))`,
     [
       data.rider_id,
       data.pickup_address, data.pickup_lat,  data.pickup_lng,
       data.drop_address,   data.drop_lat,    data.drop_lng,
       data.zone_id,        data.vehicle_type,
-      data.estimated_fare, data.estimated_km
+      data.estimated_fare, data.estimated_km,
+      data.payment_method || 'cash'
     ]
   );
   return result.insertId;
@@ -53,31 +54,7 @@ const getPendingRequestsForDriver = async (driver_id) => {
      ORDER BY rq.requested_at ASC`,
     [driver_id, driver_id]
   );
-  if (zoneMatch.length > 0) return zoneMatch;
-
-  // Fallback: any zone, matching vehicle type only
-  const [vehicleMatch] = await db.execute(
-    `SELECT rq.request_id, rq.pickup_address, rq.drop_address,
-            rq.estimated_fare, rq.estimated_km, rq.vehicle_type,
-            rq.requested_at,
-            z.zone_name, z.surge_multiplier AS zone_multiplier,
-            z.surge_multiplier_admin,
-            u.full_name AS rider_name
-     FROM ride_requests rq
-     JOIN zones z ON z.zone_id = rq.zone_id
-     JOIN users u ON u.user_id = rq.rider_id
-     WHERE rq.status     = 'pending'
-       AND rq.expires_at > NOW()
-       AND rq.vehicle_type = (
-           SELECT vehicle_type FROM vehicles WHERE driver_id = ?
-       )
-       AND rq.request_id NOT IN (
-           SELECT request_id FROM ride_assignments
-       )
-     ORDER BY rq.requested_at ASC`,
-    [driver_id]
-  );
-  return vehicleMatch;
+  return zoneMatch;
 };
 
 // ── CREATE ASSIGNMENT ─────────────────────────────────────────────────────────
@@ -110,6 +87,7 @@ const getRideById = async (ride_id) => {
             rq.rider_id,  rq.pickup_address,  rq.drop_address,
             rq.pickup_lat, rq.pickup_lng, rq.drop_lat, rq.drop_lng,
             rq.estimated_fare, rq.estimated_km, rq.vehicle_type,
+            rq.payment_method,
             u_rider.full_name  AS rider_name,
             u_rider.phone      AS rider_phone,
             u_driver.full_name AS driver_name,

@@ -100,7 +100,7 @@ export default function RiderDashboard() {
   const [form, setForm] = useState({
     pickup_address:'', pickup_lat:28.6139, pickup_lng:77.2090,
     drop_address:'',   drop_lat:28.5355,   drop_lng:77.3910,
-    zone_id:'1', vehicle_type:'sedan', estimated_km:''
+    zone_id:'1', vehicle_type:'sedan', estimated_km:'', payment_method:''
   })
   const [activeRide,     setActiveRide]     = useState(null)
   const [pendingRequest, setPendingRequest] = useState(null)
@@ -196,6 +196,9 @@ export default function RiderDashboard() {
     e.preventDefault()
     if (!form.pickup_address || !form.drop_address || !form.estimated_km) {
       return toast.error('Please fill all fields')
+    }
+    if (!form.payment_method) {
+      return toast.error('Please select a payment method')
     }
     setLoading(true)
     try {
@@ -548,6 +551,27 @@ export default function RiderDashboard() {
                         <input style={S.input} type="number" placeholder="e.g. 12.5"
                           value={form.estimated_km}
                           onChange={e => setForm(f=>({...f, estimated_km:e.target.value}))} />
+                      </div>
+                      <div style={S.field}>
+                        <label style={{...S.label, color: !form.payment_method ? '#f5a623' : '#8b93a8'}}>
+                          Payment Method {!form.payment_method && <span style={{color:'#f06060'}}>*</span>}
+                        </label>
+                        <select style={{...S.select,
+                          borderColor: !form.payment_method ? 'rgba(245,166,35,.4)' : '#2a2f3e'
+                        }}
+                          value={form.payment_method}
+                          onChange={e => setForm(f=>({...f, payment_method:e.target.value}))}>
+                          <option value="" disabled>— Select payment method —</option>
+                          <option value="upi">UPI</option>
+                          <option value="cash">Cash</option>
+                          <option value="card">Card</option>
+                          <option value="wallet">Wallet</option>
+                        </select>
+                        {!form.payment_method && (
+                          <div style={{fontSize:11, color:'#f5a623', marginTop:4}}>
+                            ⚠ Required before booking
+                          </div>
+                        )}
                       </div>
                       <button style={{...S.btn, opacity:loading?0.7:1}} type="submit" disabled={loading}>
                         {loading ? 'Finding driver...' : '🚖 Request Ride'}

@@ -132,13 +132,35 @@ DEALLOCATE PREPARE stmt;
 
 
 -- ────────────────────────────────────────────────────────────────
+-- Task: Payment Method on Ride Requests
+-- ────────────────────────────────────────────────────────────────
+
+-- payment_method
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'ride_requests'
+    AND COLUMN_NAME = 'payment_method'
+);
+
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE ride_requests ADD COLUMN payment_method ENUM(''cash'',''card'',''wallet'',''upi'') DEFAULT ''cash''',
+  'SELECT "payment_method already exists"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+-- ────────────────────────────────────────────────────────────────
 -- Notes
 -- ────────────────────────────────────────────────────────────────
 -- ✔ Safe to run multiple times
 -- ✔ No DROP CHECK (avoids MySQL syntax errors)
--- ✔ Existing columns won’t cause failure
--- ✔ Removed columns won’t cause failure
+-- ✔ Existing columns won't cause failure
+-- ✔ Removed columns won't cause failure
 -- ✔ surge_multiplier remains unchanged (used as zone_multiplier in backend)
+-- ✔ payment_method column added to ride_requests
 
 -- ================================================================
 -- END OF SCRIPT

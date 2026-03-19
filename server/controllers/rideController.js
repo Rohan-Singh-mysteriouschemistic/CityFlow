@@ -9,11 +9,15 @@ const requestRide = async (req, res) => {
   const {
     pickup_address, pickup_lat, pickup_lng,
     drop_address,   drop_lat,   drop_lng,
-    zone_id, vehicle_type, estimated_km
+    zone_id, vehicle_type, estimated_km, payment_method
   } = req.body;
 
+  const validPayments = ['cash','card','wallet','upi'];
   if (!pickup_address || !drop_address || !zone_id || !vehicle_type || !estimated_km) {
     return res.status(400).json({ message: 'Missing required fields' });
+  }
+  if (!payment_method || !validPayments.includes(payment_method)) {
+    return res.status(400).json({ message: 'Please select a valid payment method (cash, card, wallet, or upi)' });
   }
 
   try {
@@ -59,7 +63,7 @@ const requestRide = async (req, res) => {
       rider_id: req.user.user_id,
       pickup_address, pickup_lat, pickup_lng,
       drop_address,   drop_lat,   drop_lng,
-      zone_id, vehicle_type, estimated_fare, estimated_km
+      zone_id, vehicle_type, estimated_fare, estimated_km, payment_method
     });
 
     res.status(201).json({
@@ -80,6 +84,15 @@ const requestRide = async (req, res) => {
 // No assignment row exists yet for these requests.
 const getAvailableRequests = async (req, res) => {
   try {
+    // Only online drivers can see ride requests
+    const [driverRows] = await db.execute(
+      `SELECT is_available FROM driver_profiles WHERE driver_id = ?`,
+      [req.user.user_id]
+    );
+    if (!driverRows.length || !driverRows[0].is_available) {
+      return res.json({ requests: [] });
+    }
+
     const requests = await RideModel.getPendingRequestsForDriver(req.user.user_id);
     res.json({ requests });
   } catch (err) {
@@ -269,14 +282,21 @@ const getActiveRideDriver = async (req, res) => {
       `SELECT r.ride_id, r.status, r.start_time,
               rq.pickup_address, rq.drop_address,
               rq.estimated_fare, rq.estimated_km,
+              rq.payment_method AS ride_payment_method,
               u.full_name AS rider_name,
-              u.phone     AS rider_phone
+              u.phone     AS rider_phone,
+              p.payment_status,
+              p.total_amount
        FROM rides r
        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
        JOIN ride_requests    rq ON rq.request_id    = ra.request_id
        JOIN users u             ON u.user_id         = rq.rider_id
+       LEFT JOIN payments p     ON p.ride_id         = r.ride_id
        WHERE ra.driver_id = ?
-         AND r.status IN ('accepted', 'otp_pending', 'in_progress')
+         AND (
+           r.status IN ('accepted', 'otp_pending', 'in_progress')
+           OR (r.status = 'completed' AND p.payment_status = 'pending')
+         )
        ORDER BY r.created_at DESC
        LIMIT 1`,
       [req.user.user_id]
@@ -372,13 +392,13 @@ const completeRide = async (req, res) => {
         `INSERT INTO payments
          (ride_id, rider_id, base_fare, fare_per_km, distance_fare,
           surge_multiplier, surge_amount, total_amount,
-          payment_method, payment_status, paid_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', NOW())`,
+          payment_method, payment_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
         [
           ride_id, ride.rider_id,
           base, perKm, distance_fare,
           combined_mult, surge_amount, total_amount,
-          payment_method || 'cash'
+          ride.payment_method || 'cash'
         ]
       );
 
@@ -409,7 +429,7 @@ const completeRide = async (req, res) => {
         message:        'Ride completed',
         ride_id,
         total_amount,
-        payment_method: payment_method || 'cash'
+        payment_method: ride.payment_method || 'cash'
       });
 
     } catch (err) {
@@ -625,6 +645,32 @@ const getZones = async (req, res) => {
   }
 };
 
+// ── CONFIRM PAYMENT (driver) ──────────────────────────────────────────────────
+const confirmPayment = async (req, res) => {
+  const { ride_id } = req.params;
+
+  try {
+    const ride = await RideModel.getRideById(ride_id);
+    if (!ride) return res.status(404).json({ message: 'Ride not found' });
+    if (ride.driver_id !== req.user.user_id) {
+      return res.status(403).json({ message: 'Not your ride' });
+    }
+    if (ride.status !== 'completed') {
+      return res.status(400).json({ message: 'Ride is not completed yet' });
+    }
+
+    await db.execute(
+      `UPDATE payments SET payment_status = 'completed', paid_at = NOW() WHERE ride_id = ?`,
+      [ride_id]
+    );
+
+    res.json({ message: 'Payment confirmed', ride_id });
+  } catch (err) {
+    console.error('confirmPayment error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   requestRide,
   getAvailableRequests,
@@ -640,5 +686,6 @@ module.exports = {
   rateRide,
   getRiderHistory,
   getDriverHistory,
-  getZones
+  getZones,
+  confirmPayment
 };
