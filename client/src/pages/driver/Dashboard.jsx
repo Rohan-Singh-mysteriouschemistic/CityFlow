@@ -101,7 +101,9 @@ export default function DriverDashboard() {
   const [otp,        setOtp]        = useState('')
   const [loading,    setLoading]    = useState(false)
   const [requests,   setRequests]   = useState([])
+  const [requestsLoading, setRequestsLoading] = useState(false)
   const [accepting,  setAccepting]  = useState(null)
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false)
   // ── Zone state ──────────────────────────────
   const [zones,         setZones]         = useState([])
   const [selectedZone,  setSelectedZone]  = useState(null)   // zone_id (number)
@@ -156,6 +158,19 @@ export default function DriverDashboard() {
       const r = await api.get('/rides/available')
       setRequests(r.data.requests || [])
     } catch {}
+  }
+
+  const handleRefresh = async () => {
+    setRequestsLoading(true)
+    try {
+      const r = await api.get('/rides/available')
+      setRequests(r.data.requests || [])
+      toast.success('Requests refreshed')
+    } catch {
+      toast.error('Failed to refresh requests')
+    } finally {
+      setRequestsLoading(false)
+    }
   }
 
   const checkActiveRide = async () => {
@@ -244,14 +259,30 @@ export default function DriverDashboard() {
   const completeRide = async (ride_id) => {
     setLoading(true)
     try {
-      await api.patch(`/rides/${ride_id}/complete`, { actual_km: activeRide?.estimated_km || 12, payment_method: 'upi' })
-      toast.success('Ride completed!')
+      await api.patch(`/rides/${ride_id}/complete`, { actual_km: activeRide?.estimated_km || 12 })
+      toast.success('Ride completed! Please confirm payment.')
+      setPaymentConfirmed(false)
+      await checkActiveRide()
+      loadHistory()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to complete ride')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmPayment = async (ride_id) => {
+    setLoading(true)
+    try {
+      await api.patch(`/rides/${ride_id}/confirm-payment`)
+      toast.success('Payment confirmed!')
+      setPaymentConfirmed(true)
       setActiveRide(null)
       setOtp('')
       loadHistory()
       setTab('home')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to complete ride')
+      toast.error(err.response?.data?.message || 'Failed to confirm payment')
     } finally {
       setLoading(false)
     }
@@ -566,9 +597,12 @@ export default function DriverDashboard() {
             <div style={S.card}>
               <div style={S.cardHead}>
                 <span style={S.cardTitle}>Ride Requests — {currentZoneName || 'Your Zone'}</span>
-                <button onClick={loadRequests} style={{
-                  fontSize:12, color:'#2dd4a0', background:'none', border:'none', cursor:'pointer'
-                }}>↻ Refresh</button>
+                <button onClick={handleRefresh} disabled={requestsLoading} style={{
+                  fontSize:12, color: requestsLoading ? '#4a5270' : '#2dd4a0',
+                  background:'none', border:'none',
+                  cursor: requestsLoading ? 'not-allowed' : 'pointer',
+                  opacity: requestsLoading ? 0.6 : 1
+                }}>{requestsLoading ? '↻ Refreshing…' : '↻ Refresh'}</button>
               </div>
               <div style={S.cardBody}>
                 {/* Zone notice */}
@@ -722,6 +756,29 @@ export default function DriverDashboard() {
                           disabled={loading}
                         >
                           {loading ? 'Completing...' : '✓ Complete Ride'}
+                        </button>
+                      </div>
+                    )}
+
+                    {activeRide.status === 'completed' && !paymentConfirmed && (
+                      <div style={{marginTop:20}}>
+                        <div style={{
+                          background:'rgba(245,166,35,.06)', border:'1px solid rgba(245,166,35,.25)',
+                          borderRadius:12, padding:'16px', marginBottom:14, textAlign:'center'
+                        }}>
+                          <div style={{fontSize:11, color:'#f5a623', marginBottom:6, textTransform:'uppercase', letterSpacing:1, fontWeight:600}}>
+                            Payment Confirmation Required
+                          </div>
+                          <div style={{fontSize:13, color:'#8b93a8'}}>
+                            Has the rider paid for this ride?
+                          </div>
+                        </div>
+                        <button
+                          style={{...S.btn, background:'linear-gradient(135deg,#2dd4a0,#4f8cff)', opacity:loading?0.7:1}}
+                          onClick={() => confirmPayment(activeRide.ride_id)}
+                          disabled={loading}
+                        >
+                          {loading ? 'Confirming...' : '✔ Confirm Payment Received'}
                         </button>
                       </div>
                     )}
