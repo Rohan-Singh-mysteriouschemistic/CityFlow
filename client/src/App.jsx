@@ -55,10 +55,14 @@ export default function App() {
           </ProtectedRoute>
         }/>
 
-        <Route path="*" element={
+        <Route path="/" element={
           user
             ? <Navigate to={`/${user.role}`} replace />
             : <Navigate to="/login" replace />
+        }/>
+
+        <Route path="*" element={
+          <Navigate to="/" replace />
         }/>
       </Routes>
     </>
