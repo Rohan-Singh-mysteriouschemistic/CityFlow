@@ -513,6 +513,8 @@ UNION ALL SELECT 'ride_assignments', COUNT(*) FROM ride_assignments
 UNION ALL SELECT 'rides',            COUNT(*) FROM rides
 UNION ALL SELECT 'payments',         COUNT(*) FROM payments;
 
+SET SQL_SAFE_UPDATES = 0;
+
 UPDATE driver_profiles dp
 SET
     avg_rating = COALESCE((
@@ -529,6 +531,8 @@ SET
         WHERE ra.driver_id = dp.driver_id
           AND r.rider_rating IS NOT NULL
     ), 0);
+
+SET SQL_SAFE_UPDATES = 1;
 
 
 -- ─────────────────────────────────────────────
