@@ -1,8 +1,9 @@
 const db = require('../config/db');
+const logger = require('../config/logger');
 const { suspensionUntil, SUSPENSION_LABELS } = require('./authController');
 
 // ── DASHBOARD STATS ───────────────────────────
-const getDashboardStats = async (req, res) => {
+const getDashboardStats = async (req, res, next) => {
   try {
     const [[totalRides]]    = await db.execute(`SELECT COUNT(*) as count FROM rides`);
     const [[activeRides]]   = await db.execute(`SELECT COUNT(*) as count FROM rides WHERE status = 'in_progress'`);
@@ -37,13 +38,13 @@ const getDashboardStats = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('getDashboardStats error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getDashboardStats error', { message: err.message });
+    next(err);
   }
 };
 
 // ── ALL RIDES ─────────────────────────────────
-const getAllRides = async (req, res) => {
+const getAllRides = async (req, res, next) => {
   const { status, limit = 20, offset = 0 } = req.query;
   try {
     let query = `
@@ -72,13 +73,13 @@ const getAllRides = async (req, res) => {
     const [rides] = await db.execute(query, params);
     res.json({ rides });
   } catch (err) {
-    console.error('getAllRides error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getAllRides error', { message: err.message });
+    next(err);
   }
 };
 
 // ── ALL DRIVERS ───────────────────────────────
-const getAllDrivers = async (req, res) => {
+const getAllDrivers = async (req, res, next) => {
   try {
     const [drivers] = await db.execute(`
       SELECT u.user_id, u.full_name, u.email, u.phone,
@@ -97,13 +98,13 @@ const getAllDrivers = async (req, res) => {
     `);
     res.json({ drivers });
   } catch (err) {
-    console.error('getAllDrivers error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getAllDrivers error', { message: err.message });
+    next(err);
   }
 };
 
 // ── ALL RIDERS ────────────────────────────────
-const getAllRiders = async (req, res) => {
+const getAllRiders = async (req, res, next) => {
   try {
     const [riders] = await db.execute(`
       SELECT u.user_id, u.full_name, u.email, u.phone,
@@ -117,13 +118,13 @@ const getAllRiders = async (req, res) => {
     `);
     res.json({ riders });
   } catch (err) {
-    console.error('getAllRiders error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getAllRiders error', { message: err.message });
+    next(err);
   }
 };
 
 // ── VERIFY DRIVER ─────────────────────────────
-const verifyDriver = async (req, res) => {
+const verifyDriver = async (req, res, next) => {
   const { driver_id } = req.params;
   try {
     await db.execute(
@@ -132,12 +133,11 @@ const verifyDriver = async (req, res) => {
     );
     res.json({ message: 'Driver verified successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    logger.error('verifyDriver error', { message: err.message });
+    next(err);
   }
 };
-
-// ── SUSPEND USER (with duration) ─────────────
-const suspendUser = async (req, res) => {
+const suspendUser = async (req, res, next) => {
   const { user_id } = req.params;
   const { duration } = req.body;   // '1_day' | '3_days' | '1_week' | 'permanent'
   const validDurations = Object.keys(SUSPENSION_LABELS);
@@ -163,13 +163,13 @@ const suspendUser = async (req, res) => {
       until,
     });
   } catch (err) {
-    console.error('suspendUser error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('suspendUser error', { message: err.message });
+    next(err);
   }
 };
 
 // ── ACTIVATE (un-suspend) USER ─────────────────
-const activateUser = async (req, res) => {
+const activateUser = async (req, res, next) => {
   const { user_id } = req.params;
   try {
     await db.execute(
@@ -183,13 +183,13 @@ const activateUser = async (req, res) => {
     );
     res.json({ message: 'User reactivated successfully' });
   } catch (err) {
-    console.error('activateUser error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('activateUser error', { message: err.message });
+    next(err);
   }
 };
 
 // ── REVENUE BY ZONE ───────────────────────────
-const getRevenueByZone = async (req, res) => {
+const getRevenueByZone = async (req, res, next) => {
   try {
     const [data] = await db.execute(`
       SELECT z.zone_name, z.area_name,
@@ -207,12 +207,13 @@ const getRevenueByZone = async (req, res) => {
     `);
     res.json({ data });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getRevenueByZone error', { message: err.message });
+    next(err);
   }
 };
 
 // ── MANAGE ZONES (Task 5 — updated query) ─────
-const getZones = async (req, res) => {
+const getZones = async (req, res, next) => {
   try {
     // Return zone_multiplier alias for surge_multiplier + new surge_multiplier_admin; omit base_fare/fare_per_km/is_surge_active
     const [zones] = await db.execute(
@@ -225,12 +226,13 @@ const getZones = async (req, res) => {
     );
     res.json({ zones });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getZones(admin) error', { message: err.message });
+    next(err);
   }
 };
 
 // ── UPDATE ZONE MULTIPLIER (Task 5) ───────────
-const updateZoneMultiplier = async (req, res) => {
+const updateZoneMultiplier = async (req, res, next) => {
   const { zone_id } = req.params;
   const { zone_multiplier } = req.body;
   
@@ -250,13 +252,13 @@ const updateZoneMultiplier = async (req, res) => {
     );
     res.json({ message: 'Zone multiplier updated successfully', zone_multiplier: mult });
   } catch (err) {
-    console.error('updateZoneMultiplier error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('updateZoneMultiplier error', { message: err.message });
+    next(err);
   }
 };
 
 // ── UPDATE ADMIN SURGE MULTIPLIER ─────────────
-const updateAdminSurgeMultiplier = async (req, res) => {
+const updateAdminSurgeMultiplier = async (req, res, next) => {
   const { zone_id } = req.params;
   const { surge_multiplier_admin } = req.body;
   
@@ -276,8 +278,8 @@ const updateAdminSurgeMultiplier = async (req, res) => {
     );
     res.json({ message: 'Admin surge multiplier updated successfully', surge_multiplier_admin: mult });
   } catch (err) {
-    console.error('updateAdminSurgeMultiplier error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('updateAdminSurgeMultiplier error', { message: err.message });
+    next(err);
   }
 };
 

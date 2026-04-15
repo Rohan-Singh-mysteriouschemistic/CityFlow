@@ -127,28 +127,24 @@ export default function DriverDashboard() {
   useEffect(() => {
     const interval = setInterval(() => {
       checkActiveRide()
-      if (!activeRide) loadRequests()
     }, 5000)
     return () => clearInterval(interval)
   }, [tab, activeRide]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── notify driver when a NEW request appears in their zone ─
   useEffect(() => {
-    if (requests.length === 0) return
     const currentIds = requests.map(r => r.request_id)
-    const isFirstLoad = prevRequestIds.current.length === 0
-    if (!isFirstLoad) {
-      const newOnes = currentIds.filter(id => !prevRequestIds.current.includes(id))
-      if (newOnes.length > 0) {
-        toast('🚖 New ride request in your zone!', {
-          duration: 4000,
-          style: {
-            background: '#111318', color: '#e8eaf0',
-            border: '1px solid #2dd4a0', borderRadius: 10
-          }
-        })
-        if (available && !activeRide) setTab('requests')
-      }
+    const newOnes = currentIds.filter(id => !prevRequestIds.current.includes(id))
+    
+    if (newOnes.length > 0 && prevRequestIds.current.length >= 0) { // Always notify if there are new ones
+      toast('🚖 New ride request in your zone!', {
+        duration: 4000,
+        style: {
+          background: '#111318', color: '#e8eaf0',
+          border: '1px solid #2dd4a0', borderRadius: 10
+        }
+      })
+      if (available && !activeRide) setTab('requests')
     }
     prevRequestIds.current = currentIds
   }, [requests]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -177,6 +173,7 @@ export default function DriverDashboard() {
     try {
       const r = await api.get('/rides/active/driver')
       setActiveRide(r.data.ride || null)
+      if (!r.data.ride) loadRequests()
     } catch {}
   }
 
@@ -349,11 +346,28 @@ export default function DriverDashboard() {
         {/* Zone badge in sidebar */}
         {currentZoneName && (
           <div style={{
-            margin:'0 8px 8px', padding:'8px 12px', borderRadius:8,
+            margin:'0 8px 4px', padding:'8px 12px', borderRadius:8,
             background:'rgba(79,140,255,.08)', border:'1px solid rgba(79,140,255,.2)',
             fontSize:11, color:'#4f8cff'
           }}>
             📍 Zone: <strong>{currentZoneName}</strong>
+          </div>
+        )}
+
+        {/* Vehicle type chip in sidebar */}
+        {profile?.vehicle_type && (
+          <div style={{
+            margin:'0 8px 8px', padding:'8px 12px', borderRadius:8,
+            background:'rgba(45,212,160,.08)', border:'1px solid rgba(45,212,160,.2)',
+            fontSize:11, color:'#2dd4a0',
+            display:'flex', alignItems:'center', gap:6
+          }}>
+            {profile.vehicle_type === 'bike'  && '🏍️'}
+            {profile.vehicle_type === 'auto'  && '🛺'}
+            {profile.vehicle_type === 'sedan' && '🚗'}
+            {profile.vehicle_type === 'suv'   && '🚙'}
+            {profile.vehicle_type === 'xl'    && '🚌'}
+            <strong style={{textTransform:'uppercase'}}>{profile.vehicle_type}</strong>
           </div>
         )}
 
@@ -554,6 +568,53 @@ export default function DriverDashboard() {
                         </div>
                       )}
                     </div>
+
+                    {/* ── VEHICLE INFO BOX ── */}
+                    {profile?.vehicle_type && (
+                      <div style={{
+                        marginTop:14, padding:'12px 14px', borderRadius:10,
+                        background:'rgba(45,212,160,.05)',
+                        border:'1px solid rgba(45,212,160,.18)'
+                      }}>
+                        <div style={{
+                          fontSize:10, color:'#2dd4a0', fontWeight:700,
+                          textTransform:'uppercase', letterSpacing:'.6px', marginBottom:10
+                        }}>Your Vehicle</div>
+                        <div style={{display:'flex', alignItems:'center', gap:12}}>
+                          <div style={{
+                            width:44, height:44, borderRadius:10, flexShrink:0,
+                            background:'linear-gradient(135deg,rgba(45,212,160,.15),rgba(79,140,255,.1))',
+                            display:'flex', alignItems:'center', justifyContent:'center', fontSize:22
+                          }}>
+                            {profile.vehicle_type === 'bike'  && '🏍️'}
+                            {profile.vehicle_type === 'auto'  && '🛺'}
+                            {profile.vehicle_type === 'sedan' && '🚗'}
+                            {profile.vehicle_type === 'suv'   && '🚙'}
+                            {profile.vehicle_type === 'xl'    && '🚌'}
+                          </div>
+                          <div style={{flex:1}}>
+                            <div style={{
+                              fontSize:14, fontWeight:700, color:'#e8eaf0',
+                              textTransform:'capitalize'
+                            }}>
+                              {profile.make} {profile.model}
+                              <span style={{
+                                marginLeft:8, fontSize:10, fontWeight:700,
+                                background:'rgba(45,212,160,.15)',
+                                color:'#2dd4a0', padding:'2px 8px', borderRadius:20,
+                                textTransform:'uppercase', verticalAlign:'middle'
+                              }}>{profile.vehicle_type}</span>
+                            </div>
+                            <div style={{fontSize:12, color:'#8b93a8', marginTop:3}}>
+                              {profile.color} &nbsp;·&nbsp;
+                              <span style={{fontFamily:"'Syne',sans-serif", fontWeight:600, letterSpacing:1}}>
+                                {profile.registration_no}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {hasActiveRide && (
                       <div style={{
@@ -876,14 +937,18 @@ export default function DriverDashboard() {
                   </div>
                   <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>Driver · {currentZoneName || 'Delhi NCR'}</div>
                   {[
-                    ['Email',        profile.email],
-                    ['Phone',        profile.phone],
-                    ['Avg Rating',   `★ ${parseFloat(profile.avg_rating||0).toFixed(2)}`],
-                    ['Total Rides',  profile.total_rides || 0],
-                    ['Total Earned', `₹${parseFloat(profile.total_earned||0).toFixed(0)}`],
+                    ['Email',          profile.email],
+                    ['Phone',          profile.phone],
+                    ['Avg Rating',     `★ ${parseFloat(profile.avg_rating||0).toFixed(2)}`],
+                    ['Total Rides',    profile.total_rides || 0],
+                    ['Total Earned',   `₹${parseFloat(profile.total_earned||0).toFixed(0)}`],
                     ['Operating Zone', currentZoneName || '—'],
-                    ['Member Since', new Date(profile.created_at).toLocaleDateString('en-IN',{month:'long',year:'numeric'})],
-                  ].map(([k,v]) => (
+                    ['Vehicle Type',   profile.vehicle_type ? profile.vehicle_type.toUpperCase() : '—'],
+                    ['Vehicle',        profile.make && profile.model ? `${profile.make} ${profile.model}` : null],
+                    ['Color',          profile.color || null],
+                    ['Plate No.',      profile.registration_no || null],
+                    ['Member Since',   new Date(profile.created_at).toLocaleDateString('en-IN',{month:'long',year:'numeric'})],
+                  ].filter(([,v]) => v !== null && v !== undefined).map(([k,v]) => (
                     <div key={k} style={{
                       display:'flex', justifyContent:'space-between',
                       padding:'10px 0', borderBottom:'1px solid #1e2330', fontSize:13

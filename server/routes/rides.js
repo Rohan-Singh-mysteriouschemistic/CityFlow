@@ -19,13 +19,15 @@ const {
   confirmPayment
 } = require('../controllers/rideController');
 const { protect, restrictTo } = require('../middleware/auth');
-const { ROLES } = require('../config/constants');
+const { ROLES }               = require('../config/constants');
+const validate                = require('../middleware/validate');
+const { requestRideSchema, rateRideSchema, startRideSchema } = require('../validators/rideValidators');
 
 // ── PUBLIC ────────────────────────────────────
 router.get('/zones', getZones);
 
 // ── RIDER ─────────────────────────────────────
-router.post('/request',                        protect, restrictTo(ROLES.RIDER),  requestRide);
+router.post('/request',                        protect, restrictTo(ROLES.RIDER),  validate(requestRideSchema), requestRide);
 router.delete('/request/:request_id/cancel',   protect, restrictTo(ROLES.RIDER),  cancelPendingRequest);
 router.get('/active/rider',                    protect, restrictTo(ROLES.RIDER),  getActiveRideRider);
 router.get('/unrated/rider',                   protect, restrictTo(ROLES.RIDER),  getUnratedRide);
@@ -40,11 +42,11 @@ router.post('/accept/:request_id', protect, restrictTo(ROLES.DRIVER), acceptRequ
 router.get('/history/driver',      protect, restrictTo(ROLES.DRIVER), getDriverHistory);
 
 // ── SHARED (ride_id param routes — must be last) ──
-router.get('/:ride_id',            protect, getRide);
-router.patch('/:ride_id/start',            protect, restrictTo(ROLES.DRIVER), startRide);
-router.patch('/:ride_id/complete',          protect, restrictTo(ROLES.DRIVER), completeRide);
-router.patch('/:ride_id/confirm-payment',   protect, restrictTo(ROLES.DRIVER), confirmPayment);
-router.patch('/:ride_id/cancel',   protect,                           cancelRide);
-router.patch('/:ride_id/rate',     protect,                           rateRide);
+router.get('/:ride_id',                        protect, getRide);
+router.patch('/:ride_id/start',                protect, restrictTo(ROLES.DRIVER), validate(startRideSchema), startRide);
+router.patch('/:ride_id/complete',             protect, restrictTo(ROLES.DRIVER), completeRide);
+router.patch('/:ride_id/confirm-payment',      protect, restrictTo(ROLES.DRIVER), confirmPayment);
+router.patch('/:ride_id/cancel',               protect,                           cancelRide);
+router.patch('/:ride_id/rate',                 protect,                           validate(rateRideSchema), rateRide);
 
 module.exports = router;

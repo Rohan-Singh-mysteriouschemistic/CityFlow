@@ -1,11 +1,12 @@
 const db        = require('../config/db');
 const RideModel = require('../models/rideModel');
+const logger    = require('../config/logger');
 const { RIDE_STATUS, CANCELLATION_PENALTY, VEHICLE_BASE_FARES, PER_KM_RATE } = require('../config/constants');
 
 // ── REQUEST A RIDE ────────────────────────────────────────────────────────────
 // NEW FLOW: Creates a pending request only. Does NOT auto-assign a driver.
 // Drivers poll /rides/available and accept themselves (first-accept-wins).
-const requestRide = async (req, res) => {
+const requestRide = async (req, res, next) => {
   const {
     pickup_address, pickup_lat, pickup_lng,
     drop_address,   drop_lat,   drop_lng,
@@ -28,7 +29,7 @@ const requestRide = async (req, res) => {
        LEFT JOIN rides r ON r.assignment_id = ra.assignment_id
        WHERE rq.rider_id = ?
          AND (
-           rq.status = 'pending'
+           (rq.status = 'pending' AND rq.expires_at > NOW())
            OR r.status IN ('accepted', 'otp_pending', 'in_progress')
          )
        LIMIT 1`,
@@ -74,15 +75,15 @@ const requestRide = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('requestRide error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('requestRide error', { message: err.message, stack: err.stack });
+    next(err);
   }
 };
 
 // ── GET AVAILABLE REQUESTS (for driver) ──────────────────────────────────────
 // Returns pending requests in the driver's zone that match their vehicle type.
 // No assignment row exists yet for these requests.
-const getAvailableRequests = async (req, res) => {
+const getAvailableRequests = async (req, res, next) => {
   try {
     // Only online drivers can see ride requests
     const [driverRows] = await db.execute(
@@ -96,8 +97,8 @@ const getAvailableRequests = async (req, res) => {
     const requests = await RideModel.getPendingRequestsForDriver(req.user.user_id);
     res.json({ requests });
   } catch (err) {
-    console.error('getAvailableRequests error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getAvailableRequests error', { message: err.message });
+    next(err);
   }
 };
 
@@ -105,7 +106,7 @@ const getAvailableRequests = async (req, res) => {
 // Uses a DB transaction with INSERT IGNORE on ride_assignments (UNIQUE request_id)
 // so only ONE driver can ever create the assignment row.
 // Any concurrent accept for the same request_id gets a 409.
-const acceptRequest = async (req, res) => {
+const acceptRequest = async (req, res, next) => {
   const { request_id } = req.params;
   const driver_id      = req.user.user_id;
 
@@ -214,8 +215,8 @@ const acceptRequest = async (req, res) => {
         message: 'Ride was already accepted by another driver'
       });
     }
-    console.error('acceptRequest error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('acceptRequest error', { message: err.message, stack: err.stack });
+    next(err);
   } finally {
     conn.release();
   }
@@ -223,7 +224,7 @@ const acceptRequest = async (req, res) => {
 
 // ── GET ACTIVE RIDE (rider) ───────────────────────────────────────────────────
 // Always returns the OTP from DB — this is the fix for OTP being lost on refresh.
-const getActiveRideRider = async (req, res) => {
+const getActiveRideRider = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT r.ride_id, r.status, r.otp, r.start_time,
@@ -237,10 +238,10 @@ const getActiveRideRider = async (req, res) => {
        FROM rides r
        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
        JOIN ride_requests    rq ON rq.request_id    = ra.request_id
-       JOIN zones z             ON z.zone_id        = rq.zone_id
-       JOIN users u             ON u.user_id         = ra.driver_id
-       JOIN driver_profiles dp  ON dp.driver_id      = ra.driver_id
-       JOIN vehicles v          ON v.driver_id        = ra.driver_id
+       LEFT JOIN zones z             ON z.zone_id        = rq.zone_id
+       LEFT JOIN users u             ON u.user_id         = ra.driver_id
+       LEFT JOIN driver_profiles dp  ON dp.driver_id      = ra.driver_id
+       LEFT JOIN vehicles v          ON v.driver_id        = ra.driver_id
        WHERE rq.rider_id = ?
          AND r.status IN ('accepted', 'otp_pending', 'in_progress')
        ORDER BY r.created_at DESC
@@ -267,16 +268,24 @@ const getActiveRideRider = async (req, res) => {
       return res.json({ ride: null, pending_request: null });
     }
 
+    if (rows.length > 0) {
+      const row = rows[0];
+      if (!row.driver_name || !row.registration_no || !row.zone_name) {
+        console.log('WARNING: Ride found but missing some joined data:', row);
+      }
+    }
+
     res.json({ ride: rows[0] });
   } catch (err) {
-    console.error('getActiveRideRider error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    console.error('CRASH inside getActiveRideRider:', err);
+    logger.error('getActiveRideRider error', { message: err.message });
+    next(err);
   }
 };
 
 // ── GET ACTIVE RIDE (driver) ──────────────────────────────────────────────────
 // OTP is intentionally excluded — the rider shares it verbally with the driver.
-const getActiveRideDriver = async (req, res) => {
+const getActiveRideDriver = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT r.ride_id, r.status, r.start_time,
@@ -305,13 +314,13 @@ const getActiveRideDriver = async (req, res) => {
     if (rows.length === 0) return res.json({ ride: null });
     res.json({ ride: rows[0] });
   } catch (err) {
-    console.error('getActiveRideDriver error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getActiveRideDriver error', { message: err.message });
+    next(err);
   }
 };
 
 // ── START RIDE (verify OTP) ───────────────────────────────────────────────────
-const startRide = async (req, res) => {
+const startRide = async (req, res, next) => {
   const { ride_id } = req.params;
   const { otp }     = req.body;
 
@@ -345,13 +354,13 @@ const startRide = async (req, res) => {
     res.json({ message: 'Ride started successfully', ride_id });
 
   } catch (err) {
-    console.error('startRide error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('startRide error', { message: err.message });
+    next(err);
   }
 };
 
 // ── COMPLETE RIDE ─────────────────────────────────────────────────────────────
-const completeRide = async (req, res) => {
+const completeRide = async (req, res, next) => {
   const { ride_id }                    = req.params;
   const { actual_km, payment_method }  = req.body;
 
@@ -440,13 +449,13 @@ const completeRide = async (req, res) => {
     }
 
   } catch (err) {
-    console.error('completeRide error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('completeRide error', { message: err.message, stack: err.stack });
+    next(err);
   }
 };
 
 // ── CANCEL RIDE ───────────────────────────────────────────────────────────────
-const cancelRide = async (req, res) => {
+const cancelRide = async (req, res, next) => {
   const { ride_id } = req.params;
   const { reason }  = req.body;
 
@@ -501,8 +510,8 @@ const cancelRide = async (req, res) => {
     }
 
   } catch (err) {
-    console.error('cancelRide error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('cancelRide error', { message: err.message, stack: err.stack });
+    next(err);
   }
 };
 
@@ -518,7 +527,7 @@ const getRide = async (req, res) => {
 };
 
 // ── RATE RIDE ─────────────────────────────────────────────────────────────────
-const rateRide = async (req, res) => {
+const rateRide = async (req, res, next) => {
   const { ride_id }          = req.params;
   const { rating, feedback } = req.body;
 
@@ -550,13 +559,13 @@ const rateRide = async (req, res) => {
     res.json({ message: 'Rating submitted. Thank you!' });
 
   } catch (err) {
-    console.error('rateRide error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('rateRide error', { message: err.message });
+    next(err);
   }
 };
 
 // ── CANCEL PENDING REQUEST (before any driver has accepted) ─────────────────
-const cancelPendingRequest = async (req, res) => {
+const cancelPendingRequest = async (req, res, next) => {
   const { request_id } = req.params;
   try {
     const [rows] = await db.execute(
@@ -577,15 +586,15 @@ const cancelPendingRequest = async (req, res) => {
     );
     res.json({ message: 'Ride request cancelled successfully' });
   } catch (err) {
-    console.error('cancelPendingRequest error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('cancelPendingRequest error', { message: err.message });
+    next(err);
   }
 };
 
 // ── GET UNRATED COMPLETED RIDE (rider) ───────────────────────────────────────────
 // Returns the most recent ride that the rider completed but hasn't rated yet.
 // The client polls this to know when to show the post-ride rating overlay.
-const getUnratedRide = async (req, res) => {
+const getUnratedRide = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT r.ride_id, r.status, r.end_time,
@@ -611,42 +620,45 @@ const getUnratedRide = async (req, res) => {
     if (rows.length === 0) return res.json({ ride: null });
     res.json({ ride: rows[0] });
   } catch (err) {
-    console.error('getUnratedRide error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getUnratedRide error', { message: err.message });
+    next(err);
   }
 };
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
-const getRiderHistory = async (req, res) => {
+const getRiderHistory = async (req, res, next) => {
   try {
     const rides = await RideModel.getRiderHistory(req.user.user_id);
     res.json({ rides });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getRiderHistory error', { message: err.message });
+    next(err);
   }
 };
 
-const getDriverHistory = async (req, res) => {
+const getDriverHistory = async (req, res, next) => {
   try {
     const rides = await RideModel.getDriverHistory(req.user.user_id);
     res.json({ rides });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getDriverHistory error', { message: err.message });
+    next(err);
   }
 };
 
 // ── GET ALL ZONES ─────────────────────────────────────────────────────────────
-const getZones = async (req, res) => {
+const getZones = async (req, res, next) => {
   try {
     const [zones] = await db.execute('SELECT * FROM zones ORDER BY zone_name');
     res.json({ zones });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getZones error', { message: err.message });
+    next(err);
   }
 };
 
 // ── CONFIRM PAYMENT (driver) ──────────────────────────────────────────────────
-const confirmPayment = async (req, res) => {
+const confirmPayment = async (req, res, next) => {
   const { ride_id } = req.params;
 
   try {
@@ -666,8 +678,8 @@ const confirmPayment = async (req, res) => {
 
     res.json({ message: 'Payment confirmed', ride_id });
   } catch (err) {
-    console.error('confirmPayment error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('confirmPayment error', { message: err.message });
+    next(err);
   }
 };
 

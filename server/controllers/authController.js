@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const db     = require('../config/db');
+const logger = require('../config/logger');
 require('dotenv').config();
 
 const signToken = (user) => {
@@ -29,7 +30,7 @@ const suspensionUntil = (duration) => {
 };
 
 // ── REGISTER ──────────────────────────────────
-const register = async (req, res) => {
+const register = async (req, res, next) => {
   const { full_name, email, phone, password, role, license_no, vehicle } = req.body;
 
   if (!full_name || !email || !phone || !password || !role) {
@@ -100,15 +101,15 @@ const register = async (req, res) => {
 
   } catch (err) {
     await conn.rollback();
-    console.error('Register error:', err.message);
-    res.status(500).json({ message: 'Server error during registration' });
+    logger.error('Register error', { message: err.message, stack: err.stack });
+    next(err);
   } finally {
     conn.release();
   }
 };
 
 // ── LOGIN ─────────────────────────────────────
-const login = async (req, res) => {
+const login = async (req, res, next) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -187,23 +188,25 @@ const login = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Login error:', err.message);
-    res.status(500).json({ message: 'Server error during login' });
+    logger.error('Login error', { message: err.message, stack: err.stack });
+    next(err);
   }
 };
 
 // ── GET ME ────────────────────────────────────
-const getMe = async (req, res) => {
+const getMe = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT u.user_id, u.full_name, u.email, u.phone, u.role, u.created_at,
               u.is_active, u.suspension_duration, u.suspension_until,
               rp.total_rides, rp.total_spent, rp.rating as rider_rating,
               dp.avg_rating, dp.total_earned, dp.is_available, dp.is_verified,
-              dp.current_zone_id
+              dp.current_zone_id,
+              v.vehicle_type, v.make, v.model, v.color, v.registration_no, v.year
        FROM users u
-       LEFT JOIN rider_profiles rp ON rp.rider_id = u.user_id
+       LEFT JOIN rider_profiles rp  ON rp.rider_id  = u.user_id
        LEFT JOIN driver_profiles dp ON dp.driver_id = u.user_id
+       LEFT JOIN vehicles v         ON v.driver_id  = u.user_id
        WHERE u.user_id = ?`,
       [req.user.user_id]
     );
@@ -215,8 +218,8 @@ const getMe = async (req, res) => {
     res.json({ user: rows[0] });
 
   } catch (err) {
-    console.error('GetMe error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('GetMe error', { message: err.message, stack: err.stack });
+    next(err);
   }
 };
 
