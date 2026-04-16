@@ -8,7 +8,6 @@ const requestRideSchema = z.object({
   drop_address   : z.string().min(3, 'Drop address is required'),
   drop_lat       : z.coerce.number().min(-90).max(90,  'Invalid drop latitude'),
   drop_lng       : z.coerce.number().min(-180).max(180, 'Invalid drop longitude'),
-  zone_id        : z.coerce.number().int().positive('Zone is required'),
   vehicle_type   : z.enum(['auto', 'sedan', 'suv', 'xl', 'bike'], {
     errorMap: () => ({ message: 'Vehicle type must be auto, sedan, suv, xl, or bike' })
   }),

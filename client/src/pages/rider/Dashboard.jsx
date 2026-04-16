@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/axios'
 import toast from 'react-hot-toast'
+import LocationSearch from '../../components/LocationSearch'
+import MapRoute from '../../components/MapRoute'
+import { fetchRoute, haversineDistance } from '../../utils/mapUtils'
 
 const S = {
   shell: { display:'flex', minHeight:'100vh', background:'#0a0a0a' },
@@ -92,16 +95,19 @@ const S = {
 export default function RiderDashboard() {
   const { user, logout } = useAuth()
   const [tab,        setTab]        = useState('home')
-  const [zones,      setZones]      = useState([])
   const [history,    setHistory]    = useState([])
   const [profile,    setProfile]    = useState(null)
   const [loading,    setLoading]    = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
   const [form, setForm] = useState({
-    pickup_address:'', pickup_lat:28.6139, pickup_lng:77.2090,
-    drop_address:'',   drop_lat:28.5355,   drop_lng:77.3910,
-    zone_id:'1', vehicle_type:'sedan', estimated_km:'', payment_method:''
+    pickup_address:'', pickup_lat: null, pickup_lng: null,
+    drop_address:'',   drop_lat:  null, drop_lng:  null,
+    vehicle_type:'sedan', estimated_km:'', payment_method:''
   })
+  // ── Zones state ──────────────────────────────────────────
+  const [zones, setZones] = useState([])
+  const [detectedSurgeZone, setDetectedSurgeZone] = useState(null)
+  
   const [activeRide,     setActiveRide]     = useState(null)
   const [pendingRequest, setPendingRequest] = useState(null)
   const [showConfirm,    setShowConfirm]    = useState(false)
@@ -111,13 +117,65 @@ export default function RiderDashboard() {
   const [ratingRide,    setRatingRide]    = useState(null)  // {ride_id, driver_name, ...}
   const [ratingValue,   setRatingValue]   = useState(0)
   const [ratingLoading, setRatingLoading] = useState(false)
+  // ── Map / Route state ───────────────────────────────────
+  const [routeData,    setRouteData]    = useState(null)   // { distance_km, duration_min, geometry }
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [pickupSet,    setPickupSet]    = useState(false)  // true once user selects from geocoder
+  const [dropSet,      setDropSet]      = useState(false)
+  // ── auto-calculate distance when both pickup & drop are set ──
+  useEffect(() => {
+    if (!pickupSet || !dropSet) return
+    const pickup = [form.pickup_lng, form.pickup_lat]
+    const drop   = [form.drop_lng,   form.drop_lat]
+    if (!pickup[0] || !pickup[1] || !drop[0] || !drop[1]) return
+
+    let cancelled = false
+    setRouteLoading(true)
+    ;(async () => {
+      const data = await fetchRoute(pickup, drop)
+      if (cancelled) return
+      if (data) {
+        setRouteData(data)
+        setForm(f => ({ ...f, estimated_km: String(data.distance_km) }))
+      } else {
+        // Fallback: haversine
+        const km = haversineDistance(form.pickup_lat, form.pickup_lng, form.drop_lat, form.drop_lng)
+        setRouteData(null)
+        setForm(f => ({ ...f, estimated_km: String(km) }))
+      }
+      setRouteLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [pickupSet, dropSet, form.pickup_lat, form.pickup_lng, form.drop_lat, form.drop_lng]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── initial load ──────────────────────────────────────────
   useEffect(() => {
-    api.get('/rides/zones').then(r => setZones(r.data.zones))
     api.get('/auth/me').then(r => setProfile(r.data.user))
+    api.get('/rides/zones').then(r => setZones(r.data.zones || []))
     loadHistory()
     checkActiveRide()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── real-time zone detection ─────────────────────────────
+  useEffect(() => {
+    if (form.pickup_lat && form.pickup_lng && zones.length > 0) {
+      let matchedZone = null;
+      let closestDist = Infinity;
+      for (const z of zones) {
+        const dist = haversineDistance(
+          form.pickup_lat, form.pickup_lng,
+          parseFloat(z.center_lat), parseFloat(z.center_lng)
+        );
+        if (dist <= 1.0 && dist < closestDist) {
+          closestDist = dist;
+          matchedZone = z;
+        }
+      }
+      setDetectedSurgeZone(matchedZone)
+    } else {
+      setDetectedSurgeZone(null)
+    }
+  }, [form.pickup_lat, form.pickup_lng, zones])
 
   // ── poll active ride every 5 s ────────────────────────────
   useEffect(() => {
@@ -197,6 +255,9 @@ export default function RiderDashboard() {
     if (!form.pickup_address || !form.drop_address || !form.estimated_km) {
       return toast.error('Please fill all fields')
     }
+    if (!form.pickup_lat || !form.pickup_lng) {
+      return toast.error('Please select a pickup location from the suggestions')
+    }
     if (!form.payment_method) {
       return toast.error('Please select a payment method')
     }
@@ -205,6 +266,11 @@ export default function RiderDashboard() {
       const { data } = await api.post('/rides/request', form)
       toast.success(data.message)
       toast(`Estimated fare: ₹${data.estimated_fare}`, { icon: '💰' })
+      if (data.zone_detected) {
+        toast(`📍 Zone: ${data.zone_detected}${data.surge_applied ? ` — ${data.surge_multiplier.toFixed(2)}× surge applied` : ''}`, { duration: 4000 })
+      } else {
+        toast('📍 No zone surge — standard fare applied', { duration: 3000 })
+      }
       await checkActiveRide()
       setTab('active')
     } catch (err) {
@@ -515,42 +581,84 @@ export default function RiderDashboard() {
                   ) : (
                     <form onSubmit={requestRide}>
                       <div style={S.field}>
-                        <label style={S.label}>Pickup Location</label>
-                        <input style={S.input} placeholder="e.g. Connaught Place"
+                        <LocationSearch
+                          label="Pickup Location"
+                          placeholder="e.g. Connaught Place"
                           value={form.pickup_address}
-                          onChange={e => setForm(f=>({...f, pickup_address:e.target.value}))} />
+                          onSelect={({ address, lat, lng }) => {
+                            setForm(f => ({ ...f, pickup_address: address, pickup_lat: lat, pickup_lng: lng }))
+                            setPickupSet(true)
+                          }}
+                        />
                       </div>
                       <div style={S.field}>
-                        <label style={S.label}>Drop Location</label>
-                        <input style={S.input} placeholder="e.g. Cyber City, Gurugram"
+                        <LocationSearch
+                          label="Drop Location"
+                          placeholder="e.g. Cyber City, Gurugram"
                           value={form.drop_address}
-                          onChange={e => setForm(f=>({...f, drop_address:e.target.value}))} />
+                          onSelect={({ address, lat, lng }) => {
+                            setForm(f => ({ ...f, drop_address: address, drop_lat: lat, drop_lng: lng }))
+                            setDropSet(true)
+                          }}
+                        />
                       </div>
-                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-                        <div style={S.field}>
-                          <label style={S.label}>Zone</label>
-                          <select style={S.select} value={form.zone_id}
-                            onChange={e => setForm(f=>({...f, zone_id:e.target.value}))}>
-                            {zones.map(z => (
-                              <option key={z.zone_id} value={z.zone_id}>{z.zone_name}</option>
-                            ))}
-                          </select>
+
+                      {/* Mini map preview — shows route once both locations are selected */}
+                      {pickupSet && dropSet && (
+                        <div style={{ marginBottom: 14 }}>
+                          <MapRoute
+                            pickupCoords={[form.pickup_lng, form.pickup_lat]}
+                            dropCoords={[form.drop_lng, form.drop_lat]}
+                            height="200px"
+                            routeGeometry={routeData?.geometry || null}
+                          />
                         </div>
-                        <div style={S.field}>
-                          <label style={S.label}>Vehicle Type</label>
-                          <select style={S.select} value={form.vehicle_type}
-                            onChange={e => setForm(f=>({...f, vehicle_type:e.target.value}))}>
-                            {['auto','sedan','suv','xl','bike'].map(t => (
-                              <option key={t} value={t}>{t.toUpperCase()}</option>
-                            ))}
-                          </select>
+                      )}
+
+                      {/* Detected Surge Zone UI */}
+                      {detectedSurgeZone && (
+                        <div style={{
+                          marginBottom:14, padding:'10px 14px',
+                          background:'rgba(245,166,35,.08)', border:'1px solid rgba(245,166,35,.3)',
+                          borderRadius:8, fontSize:12, color:'#f5a623', display:'flex', alignItems:'center', gap:8
+                        }}>
+                          <span>🏷️</span>
+                          <span>Surge Pricing Zone applied: <strong>{detectedSurgeZone.zone_name}</strong></span>
                         </div>
+                      )}                      <div style={S.field}>
+                        <label style={S.label}>Vehicle Type</label>
+                        <select style={S.select} value={form.vehicle_type}
+                          onChange={e => setForm(f=>({...f, vehicle_type:e.target.value}))}>
+                          {['auto','sedan','suv','xl','bike'].map(t => (
+                            <option key={t} value={t}>{t.toUpperCase()}</option>
+                          ))}
+                        </select>
                       </div>
+
+                      {/* Auto-calculated distance (read-only) */}
                       <div style={S.field}>
-                        <label style={S.label}>Estimated Distance (km)</label>
-                        <input style={S.input} type="number" placeholder="e.g. 12.5"
-                          value={form.estimated_km}
-                          onChange={e => setForm(f=>({...f, estimated_km:e.target.value}))} />
+                        <label style={S.label}>Estimated Distance</label>
+                        <div style={{
+                          ...S.input, display: 'flex', alignItems: 'center',
+                          justifyContent: 'space-between',
+                          color: form.estimated_km ? '#e8eaf0' : '#4a5270',
+                          cursor: 'default'
+                        }}>
+                          {routeLoading ? (
+                            <span style={{ color: '#4f8cff', fontSize: 13 }}>Calculating route…</span>
+                          ) : form.estimated_km ? (
+                            <>
+                              <span>{form.estimated_km} km</span>
+                              {routeData?.duration_min && (
+                                <span style={{ fontSize: 11, color: '#8b93a8' }}>
+                                  ~{Math.round(routeData.duration_min)} min drive
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span>Select both locations above</span>
+                          )}
+                        </div>
                       </div>
                       <div style={S.field}>
                         <label style={{...S.label, color: !form.payment_method ? '#f5a623' : '#8b93a8'}}>
@@ -620,6 +728,29 @@ export default function RiderDashboard() {
                         This OTP verifies your identity to the driver
                       </div>
                     </div>
+
+                    {/* Route Map */}
+                    {activeRide.pickup_lat && activeRide.drop_lat && (
+                      <div style={{ marginBottom: 20 }}>
+                        <MapRoute
+                          pickupCoords={[parseFloat(activeRide.pickup_lng), parseFloat(activeRide.pickup_lat)]}
+                          dropCoords={[parseFloat(activeRide.drop_lng), parseFloat(activeRide.drop_lat)]}
+                          height="250px"
+                        />
+                      </div>
+                    )}
+
+                    {/* Detected Zone display for Active Ride */}
+                    {activeRide.zone_name && (
+                      <div style={{
+                        marginTop:'-10px', marginBottom:'20px', padding:'10px 14px',
+                        background:'rgba(245,166,35,.08)', border:'1px solid rgba(245,166,35,.3)',
+                        borderRadius:8, fontSize:12, color:'#f5a623', display:'flex', alignItems:'center', gap:8
+                      }}>
+                        <span>🏷️</span>
+                        <span>Automatically assigned to <strong>{activeRide.zone_name}</strong> surge zone</span>
+                      </div>
+                    )}
 
                     {/* Status timeline */}
                     <div style={{
@@ -814,6 +945,29 @@ export default function RiderDashboard() {
                   </div>
 
                   <div style={{padding:'20px 24px'}}>
+                    {/* Route Map for pending request */}
+                    {pendingRequest.pickup_lat && pendingRequest.drop_lat && (
+                      <div style={{ marginBottom: 16 }}>
+                        <MapRoute
+                          pickupCoords={[parseFloat(pendingRequest.pickup_lng), parseFloat(pendingRequest.pickup_lat)]}
+                          dropCoords={[parseFloat(pendingRequest.drop_lng), parseFloat(pendingRequest.drop_lat)]}
+                          height="180px"
+                        />
+                      </div>
+                    )}
+
+                    {/* Detected Zone display for Pending Request */}
+                    {pendingRequest.zone_name && (
+                      <div style={{
+                        marginTop:'-6px', marginBottom:'16px', padding:'10px 14px',
+                        background:'rgba(245,166,35,.08)', border:'1px solid rgba(245,166,35,.3)',
+                        borderRadius:8, fontSize:12, color:'#f5a623', display:'flex', alignItems:'center', gap:8
+                      }}>
+                        <span>🏷️</span>
+                        <span>Automatically assigned to <strong>{pendingRequest.zone_name}</strong> surge zone</span>
+                      </div>
+                    )}
+
                     {/* Route */}
                     <div style={{
                       background:'#181c24', borderRadius:12, padding:'16px',

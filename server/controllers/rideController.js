@@ -3,19 +3,35 @@ const RideModel = require('../models/rideModel');
 const logger    = require('../config/logger');
 const { RIDE_STATUS, CANCELLATION_PENALTY, VEHICLE_BASE_FARES, PER_KM_RATE } = require('../config/constants');
 
+// ── Haversine helper (server-side) ───────────────────────────────────────────
+// Returns distance in km between two lat/lng pairs.
+const haversineKm = (lat1, lng1, lat2, lng2) => {
+  const R   = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) ** 2
+          + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+          * Math.sin(dLng/2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 // ── REQUEST A RIDE ────────────────────────────────────────────────────────────
 // NEW FLOW: Creates a pending request only. Does NOT auto-assign a driver.
 // Drivers poll /rides/available and accept themselves (first-accept-wins).
+// Zone is auto-detected via Haversine — rider no longer selects it manually.
 const requestRide = async (req, res, next) => {
   const {
     pickup_address, pickup_lat, pickup_lng,
     drop_address,   drop_lat,   drop_lng,
-    zone_id, vehicle_type, estimated_km, payment_method
+    vehicle_type, estimated_km, payment_method
   } = req.body;
 
   const validPayments = ['cash','card','wallet','upi'];
-  if (!pickup_address || !drop_address || !zone_id || !vehicle_type || !estimated_km) {
+  if (!pickup_address || !drop_address || !vehicle_type || !estimated_km) {
     return res.status(400).json({ message: 'Missing required fields' });
+  }
+  if (!pickup_lat || !pickup_lng) {
+    return res.status(400).json({ message: 'Pickup coordinates are required. Please use the location search.' });
   }
   if (!payment_method || !validPayments.includes(payment_method)) {
     return res.status(400).json({ message: 'Please select a valid payment method (cash, card, wallet, or upi)' });
@@ -41,22 +57,34 @@ const requestRide = async (req, res, next) => {
       });
     }
 
-    const [zones] = await db.execute(
-      'SELECT * FROM zones WHERE zone_id = ?', [zone_id]
-    );
-    if (zones.length === 0) {
-      return res.status(404).json({ message: 'Zone not found' });
+    // ── GEOFENCING: Auto-detect zone from pickup coordinates ──────────────
+    const ZONE_RADIUS_KM = 1.0; // Apply surge if pickup is within 1km of zone center
+    const [allZones] = await db.execute('SELECT * FROM zones');
+
+    let matchedZone    = null;
+    let closestDistKm  = Infinity;
+
+    for (const z of allZones) {
+      const dist = haversineKm(
+        parseFloat(pickup_lat),  parseFloat(pickup_lng),
+        parseFloat(z.center_lat), parseFloat(z.center_lng)
+      );
+      if (dist <= ZONE_RADIUS_KM && dist < closestDistKm) {
+        closestDistKm = dist;
+        matchedZone   = z;
+      }
     }
 
-    const zone         = zones[0];
-    const base         = VEHICLE_BASE_FARES[vehicle_type] || VEHICLE_BASE_FARES['sedan'];
-    const perKm        = PER_KM_RATE;
-    const zoneMulti    = parseFloat(zone.surge_multiplier || 1);
-    const surgeAdmin   = parseFloat(zone.surge_multiplier_admin || 1);
-    
-    // Exact requested logic: fare = (vehicle_base_fare + distance_fare) * zoneMulti * surgeAdmin
-    const distance_fare  = parseFloat(estimated_km) * perKm;
-    const combined_mult  = zoneMulti * surgeAdmin;
+    // Apply surge from matched zone, or default to 1.0
+    const zoneMulti  = matchedZone ? parseFloat(matchedZone.surge_multiplier      || 1) : 1.0;
+    const surgeAdmin = matchedZone ? parseFloat(matchedZone.surge_multiplier_admin || 1) : 1.0;
+    const zone_id    = matchedZone ? matchedZone.zone_id : null;
+    const zone_name  = matchedZone ? matchedZone.zone_name : null;
+
+    const base          = VEHICLE_BASE_FARES[vehicle_type] || VEHICLE_BASE_FARES['sedan'];
+    const perKm         = PER_KM_RATE;
+    const distance_fare = parseFloat(estimated_km) * perKm;
+    const combined_mult = zoneMulti * surgeAdmin;
     const estimated_fare = parseFloat(((base + distance_fare) * combined_mult).toFixed(2));
 
     // Create the request in 'pending' status — no driver assigned yet
@@ -68,10 +96,13 @@ const requestRide = async (req, res, next) => {
     });
 
     res.status(201).json({
-      message:        'Ride requested! Waiting for a driver to accept.',
+      message:         'Ride requested! Waiting for a driver to accept.',
       request_id,
       estimated_fare,
-      driver_found:   false   // driver hasn't accepted yet
+      zone_detected:   zone_name,             // inform rider which zone was detected
+      surge_applied:   combined_mult > 1.0,
+      surge_multiplier: combined_mult,
+      driver_found:    false
     });
 
   } catch (err) {
@@ -79,6 +110,7 @@ const requestRide = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // ── GET AVAILABLE REQUESTS (for driver) ──────────────────────────────────────
 // Returns pending requests in the driver's zone that match their vehicle type.
@@ -228,7 +260,8 @@ const getActiveRideRider = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT r.ride_id, r.status, r.otp, r.start_time,
-              rq.pickup_address, rq.drop_address,
+              rq.pickup_address, rq.pickup_lat, rq.pickup_lng,
+              rq.drop_address, rq.drop_lat, rq.drop_lng,
               rq.estimated_fare, rq.estimated_km,
               z.zone_name, z.surge_multiplier,
               u.full_name   AS driver_name,
@@ -252,10 +285,13 @@ const getActiveRideRider = async (req, res, next) => {
     if (rows.length === 0) {
       // Also check if they have a pending (unmatched) request
       const [pending] = await db.execute(
-        `SELECT request_id, pickup_address, drop_address,
-                estimated_fare, estimated_km, vehicle_type, status
-         FROM ride_requests
-         WHERE rider_id = ? AND status = 'pending' AND expires_at > NOW()
+        `SELECT rq.request_id, rq.pickup_address, rq.pickup_lat, rq.pickup_lng,
+                rq.drop_address, rq.drop_lat, rq.drop_lng,
+                rq.estimated_fare, rq.estimated_km, rq.vehicle_type, rq.status,
+                z.zone_name
+         FROM ride_requests rq
+         LEFT JOIN zones z ON z.zone_id = rq.zone_id
+         WHERE rq.rider_id = ? AND rq.status = 'pending' AND rq.expires_at > NOW()
          LIMIT 1`,
         [req.user.user_id]
       );
@@ -270,7 +306,7 @@ const getActiveRideRider = async (req, res, next) => {
 
     if (rows.length > 0) {
       const row = rows[0];
-      if (!row.driver_name || !row.registration_no || !row.zone_name) {
+      if (!row.driver_name || !row.registration_no) {
         console.log('WARNING: Ride found but missing some joined data:', row);
       }
     }
@@ -289,7 +325,8 @@ const getActiveRideDriver = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT r.ride_id, r.status, r.start_time,
-              rq.pickup_address, rq.drop_address,
+              rq.pickup_address, rq.pickup_lat, rq.pickup_lng,
+              rq.drop_address, rq.drop_lat, rq.drop_lng,
               rq.estimated_fare, rq.estimated_km,
               rq.payment_method AS ride_payment_method,
               u.full_name AS rider_name,

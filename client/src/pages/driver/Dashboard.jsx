@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/axios'
 import toast from 'react-hot-toast'
+import MapRoute from '../../components/MapRoute'
+import LocationSearch from '../../components/LocationSearch'
 
 const S = {
   shell: { display:'flex', minHeight:'100vh', background:'#0a0a0a' },
@@ -104,10 +106,10 @@ export default function DriverDashboard() {
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [accepting,  setAccepting]  = useState(null)
   const [paymentConfirmed, setPaymentConfirmed] = useState(false)
-  // ── Zone state ──────────────────────────────
-  const [zones,         setZones]         = useState([])
-  const [selectedZone,  setSelectedZone]  = useState(null)   // zone_id (number)
-  const [zoneLoading,   setZoneLoading]   = useState(false)
+  // ── Location state ────────────────────────────
+  const [detectedZone, setDetectedZone] = useState(null)
+  const [currentAddress, setCurrentAddress] = useState('')
+  const [locLoading,   setLocLoading]   = useState(false)
   // ────────────────────────────────────────────
   const prevRequestIds = useRef([])
 
@@ -116,9 +118,13 @@ export default function DriverDashboard() {
     api.get('/auth/me').then(r => {
       setProfile(r.data.user)
       setAvailable(r.data.user.is_available || false)
-      if (r.data.user.current_zone_id) setSelectedZone(r.data.user.current_zone_id)
+      if (r.data.user?.user_id) {
+        const addr = localStorage.getItem(`driverLoc_${r.data.user.user_id}_addr`)
+        const zone = localStorage.getItem(`driverLoc_${r.data.user.user_id}_zone`)
+        if (addr) setCurrentAddress(addr)
+        if (zone) setDetectedZone(zone)
+      }
     })
-    api.get('/rides/zones').then(r => setZones(r.data.zones || []))
     loadHistory()
     checkActiveRide()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -177,19 +183,26 @@ export default function DriverDashboard() {
     } catch {}
   }
 
-  // ── update operating zone ─────────────────────────────────
-  const updateZone = async (zone_id) => {
-    setZoneLoading(true)
+  // ── update GPS location via manual Mapbox search ─────────
+  const updateLocation = async (place) => {
+    setLocLoading(true)
+    setCurrentAddress(place.address)
     try {
-      await api.patch('/drivers/zone', { zone_id: parseInt(zone_id) })
-      setSelectedZone(parseInt(zone_id))
-      const z = zones.find(z => z.zone_id === parseInt(zone_id))
-      toast.success(`Zone updated to ${z?.zone_name || 'selected zone'}`)
-      loadRequests()   // refresh available rides for new zone
+      const r = await api.patch('/drivers/location', { lat: place.lat, lng: place.lng })
+      const zoneName = r.data.nearest_zone?.zone_name || 'Custom Location'
+      setDetectedZone(zoneName)
+      
+      if (user?.user_id) {
+        localStorage.setItem(`driverLoc_${user.user_id}_addr`, place.address)
+        localStorage.setItem(`driverLoc_${user.user_id}_zone`, zoneName)
+      }
+
+      toast.success('Location updated! Catching nearby rides.')
+      loadRequests()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to update zone')
+      toast.error(err.response?.data?.message || 'Failed to update location')
     } finally {
-      setZoneLoading(false)
+      setLocLoading(false)
     }
   }
 
@@ -232,7 +245,11 @@ export default function DriverDashboard() {
       setAvailable(newVal)
       await api.patch(`/drivers/availability`, { is_available: newVal })
       toast.success(newVal ? 'You are now online' : 'You are now offline')
-      if (newVal) loadRequests()
+      if (newVal && !currentAddress) {
+        toast('Please set your location to receive rides.', { icon: '📍' })
+      } else if (newVal) {
+        loadRequests()
+      }
     } catch {
       setAvailable(v => !v)
       toast.error('Failed to update status')
@@ -292,7 +309,7 @@ export default function DriverDashboard() {
   const todayRides      = history.filter(r =>
     r.status==='completed' && new Date(r.start_time).toDateString()===new Date().toDateString()
   )
-  const currentZoneName = zones.find(z => z.zone_id === selectedZone)?.zone_name || null
+  const currentZoneName = detectedZone || null
 
   const navItems = [
     { id:'home',     label:'Dashboard',   icon:'📊', disabled: false },
@@ -521,50 +538,30 @@ export default function DriverDashboard() {
                       </button>
                     </div>
 
-                    {/* ── ZONE SELECTOR ── */}
+                    {/* ── GPS LOCATION ── */}
                     <div style={{marginBottom:14}}>
-                      <div style={{
-                        fontSize:11, color:'#8b93a8', marginBottom:8,
-                        textTransform:'uppercase', letterSpacing:'.6px'
-                      }}>
-                        Operating Zone
-                      </div>
-                      <div style={{position:'relative'}}>
-                        <select
-                          style={{
-                            ...S.select,
-                            borderColor: selectedZone ? 'rgba(45,212,160,.4)' : '#2a2f3e',
-                            opacity: zoneLoading ? 0.6 : 1
-                          }}
-                          value={selectedZone || ''}
-                          disabled={zoneLoading}
-                          onChange={e => updateZone(e.target.value)}
-                        >
-                          <option value="" disabled>— Select your zone —</option>
-                          {zones.map(z => (
-                            <option key={z.zone_id} value={z.zone_id}>
-                              {z.zone_name} {z.area_name ? `(${z.area_name})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                        {zoneLoading && (
-                          <div style={{
-                            position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
-                            fontSize:11, color:'#2dd4a0'
-                          }}>Saving…</div>
-                        )}
-                      </div>
-                      {selectedZone && (
+                      <LocationSearch
+                        label="CURRENT LOCATION"
+                        placeholder="Search area (e.g. India Gate)"
+                        value={currentAddress}
+                        onSelect={updateLocation}
+                      />
+                      
+                      {locLoading && (
+                        <div style={{fontSize:11, color:'#f5a623', marginTop:6}}>📍 Updating location...</div>
+                      )}
+
+                      {detectedZone && !locLoading && (
                         <div style={{
                           marginTop:8, fontSize:11, color:'#2dd4a0',
                           display:'flex', alignItems:'center', gap:6
                         }}>
-                          ✓ Showing requests in <strong>{currentZoneName}</strong> only
+                          ✓ Operating near: <strong>{detectedZone}</strong>
                         </div>
                       )}
-                      {!selectedZone && (
+                      {!detectedZone && !locLoading && (
                         <div style={{marginTop:8, fontSize:11, color:'#f5a623'}}>
-                          ⚠ Select a zone to receive targeted ride requests
+                          ⚠ Set location to receive nearby ride requests
                         </div>
                       )}
                     </div>
@@ -657,7 +654,7 @@ export default function DriverDashboard() {
           {tab === 'requests' && (
             <div style={S.card}>
               <div style={S.cardHead}>
-                <span style={S.cardTitle}>Ride Requests — {currentZoneName || 'Your Zone'}</span>
+                <span style={S.cardTitle}>Nearby Ride Requests</span>
                 <button onClick={handleRefresh} disabled={requestsLoading} style={{
                   fontSize:12, color: requestsLoading ? '#4a5270' : '#2dd4a0',
                   background:'none', border:'none',
@@ -674,11 +671,11 @@ export default function DriverDashboard() {
                   display:'flex', alignItems:'center', justifyContent:'space-between'
                 }}>
                   <span>
-                    📍 Showing requests from riders in <strong style={{color:'#2dd4a0'}}>
-                      {currentZoneName || 'your zone'}
+                    📍 Showing requests from riders within <strong style={{color:'#2dd4a0'}}>
+                      2km of your location
                     </strong>. First driver to accept wins.
                   </span>
-                  {!selectedZone && (
+                  {!detectedZone && (
                     <button
                       onClick={() => setTab('home')}
                       style={{
@@ -687,7 +684,7 @@ export default function DriverDashboard() {
                         padding:'4px 10px', cursor:'pointer', flexShrink:0, marginLeft:12
                       }}
                     >
-                      Set zone →
+                      Set location →
                     </button>
                   )}
                 </div>
@@ -717,6 +714,16 @@ export default function DriverDashboard() {
                     <div style={{fontSize:12, color:'#8b93a8', marginBottom:12}}>
                       🏁 {r.drop_address}
                     </div>
+                    {/* Mini route map */}
+                    {r.pickup_lat && r.drop_lat && (
+                      <div style={{ marginBottom: 12 }}>
+                        <MapRoute
+                          pickupCoords={[parseFloat(r.pickup_lng), parseFloat(r.pickup_lat)]}
+                          dropCoords={[parseFloat(r.drop_lng), parseFloat(r.drop_lat)]}
+                          height="140px"
+                        />
+                      </div>
+                    )}
                     <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                       <span style={{fontSize:11, color:'#4a5270'}}>
                         {r.estimated_km} km · {r.zone_name}
@@ -770,6 +777,17 @@ export default function DriverDashboard() {
                         {activeRide.otp || '••••'}
                       </div>
                     </div>
+
+                    {/* Route Map */}
+                    {activeRide.pickup_lat && activeRide.drop_lat && (
+                      <div style={{ marginBottom: 20 }}>
+                        <MapRoute
+                          pickupCoords={[parseFloat(activeRide.pickup_lng), parseFloat(activeRide.pickup_lat)]}
+                          dropCoords={[parseFloat(activeRide.drop_lng), parseFloat(activeRide.drop_lat)]}
+                          height="220px"
+                        />
+                      </div>
+                    )}
 
                     {/* Ride details */}
                     {[

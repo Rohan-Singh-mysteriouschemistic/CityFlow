@@ -14,7 +14,7 @@ const createRequest = async (data) => {
       data.rider_id,
       data.pickup_address, data.pickup_lat,  data.pickup_lng,
       data.drop_address,   data.drop_lat,    data.drop_lng,
-      data.zone_id,        data.vehicle_type,
+      data.zone_id || null,  data.vehicle_type,
       data.estimated_fare, data.estimated_km,
       data.payment_method || 'cash'
     ]
@@ -26,35 +26,55 @@ const createRequest = async (data) => {
 // Returns requests that:
 //   1. Are still pending (no assignment row yet)
 //   2. Haven't expired
-//   3. Match the driver's zone (with fallback to any zone)
+//   3. Are within 2km of the driver's current GPS location (Haversine in SQL)
 //   4. Match the driver's vehicle type
 const getPendingRequestsForDriver = async (driver_id) => {
-  // Primary: same zone + matching vehicle type
-  const [zoneMatch] = await db.execute(
-    `SELECT rq.request_id, rq.pickup_address, rq.drop_address,
+  const [rows] = await db.execute(
+    `SELECT rq.request_id, rq.pickup_address, rq.pickup_lat, rq.pickup_lng,
+            rq.drop_address, rq.drop_lat, rq.drop_lng,
             rq.estimated_fare, rq.estimated_km, rq.vehicle_type,
             rq.requested_at,
             z.zone_name, z.surge_multiplier AS zone_multiplier,
             z.surge_multiplier_admin,
-            u.full_name AS rider_name
+            u.full_name AS rider_name,
+            (
+              6371 * ACOS(
+                LEAST(1.0, COS(RADIANS(dp.last_location_lat))
+                  * COS(RADIANS(rq.pickup_lat))
+                  * COS(RADIANS(rq.pickup_lng) - RADIANS(dp.last_location_lng))
+                  + SIN(RADIANS(dp.last_location_lat))
+                  * SIN(RADIANS(rq.pickup_lat))
+                )
+              )
+            ) AS distance_km
      FROM ride_requests rq
-     JOIN zones z ON z.zone_id = rq.zone_id
+     JOIN driver_profiles dp ON dp.driver_id = ?
+     LEFT JOIN zones z ON z.zone_id = rq.zone_id
      JOIN users u ON u.user_id = rq.rider_id
      WHERE rq.status     = 'pending'
        AND rq.expires_at > NOW()
-       AND rq.zone_id    = (
-           SELECT current_zone_id FROM driver_profiles WHERE driver_id = ?
-       )
        AND rq.vehicle_type = (
            SELECT vehicle_type FROM vehicles WHERE driver_id = ?
        )
        AND rq.request_id NOT IN (
            SELECT request_id FROM ride_assignments
        )
-     ORDER BY rq.requested_at ASC`,
+       AND dp.last_location_lat IS NOT NULL
+       AND dp.last_location_lng IS NOT NULL
+       AND (
+         6371 * ACOS(
+           LEAST(1.0, COS(RADIANS(dp.last_location_lat))
+             * COS(RADIANS(rq.pickup_lat))
+             * COS(RADIANS(rq.pickup_lng) - RADIANS(dp.last_location_lng))
+             + SIN(RADIANS(dp.last_location_lat))
+             * SIN(RADIANS(rq.pickup_lat))
+           )
+         )
+       ) <= 2
+     ORDER BY distance_km ASC, rq.requested_at ASC`,
     [driver_id, driver_id]
   );
-  return zoneMatch;
+  return rows;
 };
 
 // ── CREATE ASSIGNMENT ─────────────────────────────────────────────────────────
@@ -80,6 +100,7 @@ const createRide = async (assignment_id) => {
 // ── GET RIDE BY ID (full join) ────────────────────────────────────────────────
 // NOTE: base_fare and fare_per_km were removed from zones table.
 //       Fare computation is now done in rideController using VEHICLE_BASE_FARES.
+//       zone_id can be NULL (rides outside all zones), so LEFT JOIN zones.
 const getRideById = async (ride_id) => {
   const [rows] = await db.execute(
     `SELECT r.*,
@@ -105,7 +126,7 @@ const getRideById = async (ride_id) => {
      JOIN users u_driver       ON u_driver.user_id = ra.driver_id
      JOIN driver_profiles dp   ON dp.driver_id     = ra.driver_id
      JOIN vehicles v           ON v.driver_id      = ra.driver_id
-     JOIN zones z              ON z.zone_id        = rq.zone_id
+     LEFT JOIN zones z         ON z.zone_id        = rq.zone_id
      WHERE r.ride_id = ?`,
     [ride_id]
   );
@@ -131,7 +152,7 @@ const getRiderHistory = async (rider_id) => {
      JOIN users u             ON u.user_id         = ra.driver_id
      JOIN driver_profiles dp  ON dp.driver_id      = ra.driver_id
      JOIN vehicles v          ON v.driver_id       = ra.driver_id
-     JOIN zones z             ON z.zone_id         = rq.zone_id
+     LEFT JOIN zones z        ON z.zone_id         = rq.zone_id
      LEFT JOIN payments p     ON p.ride_id         = r.ride_id
      WHERE rq.rider_id = ?
      ORDER BY r.created_at DESC`,
