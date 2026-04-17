@@ -5,9 +5,9 @@ import { useAuth } from './context/AuthContext'
 import Login    from './pages/Login'
 import Register from './pages/Register'
 
-import RiderDashboard  from './pages/rider/Dashboard'
-import DriverDashboard from './pages/driver/Dashboard'
-import AdminDashboard  from './pages/admin/Dashboard'
+import RiderDashboard  from './pages/rider/Rider_Dashboard'
+import DriverDashboard from './pages/driver/Driver_Dashboard'
+import AdminDashboard  from './pages/admin/Admin_Dashboard'
 
 const ProtectedRoute = ({ children, role }) => {
   const { user, loading } = useAuth()

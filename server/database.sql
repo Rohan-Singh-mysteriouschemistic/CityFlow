@@ -384,28 +384,28 @@ INSERT IGNORE INTO users
 (user_id, full_name, email, phone, password_hash, role,
  suspension_duration, suspended_at, suspension_until) VALUES
 -- Riders
-(1,  'Rohan Singh',    'rohan@cityflow.in',  '9810001001', '$2b$12$lOe0s63rC7ryBgrPso2y7.rMNIN8PqivX2ciuo9seCB0Gc6yAY8em', 'rider',  NULL, NULL, NULL),
-(2,  'Arjun Sharma',   'arjun@cityflow.in',  '9810001002', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider',  NULL, NULL, NULL),
-(3,  'Priya Patel',    'priya@cityflow.in',  '9810001003', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider',  NULL, NULL, NULL),
-(4,  'Sneha Reddy',    'sneha@cityflow.in',  '9810001004', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider',  NULL, NULL, NULL),
-(5,  'Vikram Singh',   'vikram@cityflow.in', '9810001005', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider',  NULL, NULL, NULL),
-(6,  'Ananya Iyer',    'ananya@cityflow.in', '9810001006', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'rider',  NULL, NULL, NULL),
+(1,  'Rohan Singh',    'rohan@cityflow.in',  '9810001001', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(2,  'Arjun Sharma',   'arjun@cityflow.in',  '9810001002', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(3,  'Priya Patel',    'priya@cityflow.in',  '9810001003', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(4,  'Sneha Reddy',    'sneha@cityflow.in',  '9810001004', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(5,  'Vikram Singh',   'vikram@cityflow.in', '9810001005', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(6,  'Ananya Iyer',    'ananya@cityflow.in', '9810001006', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
 -- Drivers
-(7,  'Ramesh Kumar',   'ramesh@cityflow.in', '9911001001', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver', NULL, NULL, NULL),
-(8,  'Suresh Yadav',   'suresh@cityflow.in', '9911001002', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver', NULL, NULL, NULL),
-(9,  'Mahesh Tiwari',  'mahesh@cityflow.in', '9911001003', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver', NULL, NULL, NULL),
-(10, 'Ganesh Sharma',  'ganesh@cityflow.in', '9911001004', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver', NULL, NULL, NULL),
-(11, 'Paresh Jain',    'paresh@cityflow.in', '9911001005', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'driver', NULL, NULL, NULL),
+(7,  'Ramesh Kumar',   'ramesh@cityflow.in', '9911001001', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
+(8,  'Suresh Yadav',   'suresh@cityflow.in', '9911001002', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
+(9,  'Mahesh Tiwari',  'mahesh@cityflow.in', '9911001003', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
+(10, 'Ganesh Sharma',  'ganesh@cityflow.in', '9911001004', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
+(11, 'Paresh Jain',    'paresh@cityflow.in', '9911001005', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
 -- Admin
-(12, 'CityFlow Admin', 'admin@cityflow.in',  '9999999999', '$2b$12$LSKcnK2KSFuEASvTd8mSMON5X0Mg5erteIzBTST17M6XE.SNkA6Vu', 'admin',  NULL, NULL, NULL),
+(12, 'CityFlow Admin', 'admin@cityflow.in',  '9999999999', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'admin',  NULL, NULL, NULL),
 -- Extra users
-(13, 'Shabd Yadav',    'shabd@cityflow.com', '9990245637', '$2b$12$OIf4rSkdsjqvXf3cBDPdXuJVViuBHTvoxY.wCwFFJjGL58URk2LTq', 'rider',  NULL, NULL, NULL),
-(14, 'Achintya Rajput','achintya@gmail.com', '9874561239', '$2b$12$EBgh08/gYRIlFT0XUc1x2ezM7DJi1XISBaYsKc4To9PMx10o3Qw7u', 'rider',  NULL, NULL, NULL),
-(15, 'Shabd Yadav',    'shabd@gmail.com',    '9717465195', '$2b$12$DMNvMS2MZXx/3AgbmM3sB.wIOqhPPE84sutUNpumT2QtV.sZbJZgS', 'driver', NULL, NULL, NULL),
-(16, 'ishank',         'ishank@gmail.com',   '9876543234', '$2b$12$uT1xG/liRegZW7b8rvNnaeGpPkbVHfpHmUGn/IG.5Wvcub1WoY7GW', 'rider',  NULL, NULL, NULL),
-(17, 'mayank',         'mayank@gmail.com',   '9876543239', '$2b$12$I89pygdpGOQD/lQwEpHo9e8j4huE682uuEMhL6.An/NWYflQIFcdu', 'driver', NULL, NULL, NULL),
-(18, 'Navrun',         'navrun@gmail.com',   '9878998798', '$2b$12$vA1DcBHvEvjzaBj3mp.pP.zDqEtpuUoVKRqEkFZbfVE19HNwijDMa', 'driver', NULL, NULL, NULL),
-(19, 'Nikhil',         'nikhil@gmail.com',   '9876754367', '$2b$12$DV2vFgR4FjHzrWO5B6n0Luwx8l4l8Q99yzWH6XcDHUaVsziKiQcNm', 'rider',  NULL, NULL, NULL);
+(13, 'Shabd Yadav',    'shabd@cityflow.com', '9990245637', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(14, 'Achintya Rajput','achintya@gmail.com', '9874561239', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(15, 'Shabd Yadav',    'shabd@gmail.com',    '9717465195', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
+(16, 'ishank',         'ishank@gmail.com',   '9876543234', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL),
+(17, 'mayank',         'mayank@gmail.com',   '9876543239', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
+(18, 'Navrun',         'navrun@gmail.com',   '9878998798', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'driver', NULL, NULL, NULL),
+(19, 'Nikhil',         'nikhil@gmail.com',   '9876754367', '$2b$12$ovBw99gxRKjw1rUSW5maDO1JUxlhnI0k1Rw896hOXhYYtWbBVPNeC', 'rider',  NULL, NULL, NULL);
 
 -- STEP 3: RIDER PROFILES
 INSERT IGNORE INTO rider_profiles (rider_id, total_rides, total_spent, preferred_payment, rating)

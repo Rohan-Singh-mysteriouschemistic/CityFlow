@@ -21,12 +21,11 @@ export default function Login() {
       toast.success(`Welcome back, ${user.full_name.split(' ')[0]}!`)
       navigate(`/${user.role}`)
     } catch (err) {
-      const data = err.response?.data
-      if (data?.code === 'ACCOUNT_SUSPENDED') {
-        // Task 1: Show detailed suspension feedback
-        setSuspensionInfo(data)
+      const respData = err.response?.data;
+      if (respData?.code === 'ACCOUNT_SUSPENDED') {
+        setSuspensionInfo(respData)
       } else {
-        toast.error(data?.message || 'Login failed')
+        toast.error(respData?.message || err.message || 'Login failed')
       }
     } finally {
       setLoading(false)

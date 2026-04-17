@@ -15,7 +15,7 @@ const app = express();
 app.use(helmet());
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 
 // ── Body Parsers ──────────────────────────────────────────────────────────────
 app.use(express.json());
