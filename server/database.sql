@@ -523,34 +523,127 @@ UPDATE driver_profiles SET total_rides = 1, total_earned = 241.00, is_available 
 UPDATE driver_profiles SET total_rides = 2, total_earned = 774.00, is_available = TRUE WHERE driver_id = 17;
 UPDATE driver_profiles SET total_rides = 2, total_earned = 327.60, is_available = TRUE WHERE driver_id = 18;
 
--- VERIFY
-SELECT 'zones'           AS tbl, COUNT(*) AS rows FROM zones
-UNION ALL SELECT 'users',            COUNT(*) FROM users
-UNION ALL SELECT 'rider_profiles',   COUNT(*) FROM rider_profiles
-UNION ALL SELECT 'driver_profiles',  COUNT(*) FROM driver_profiles
-UNION ALL SELECT 'vehicles',         COUNT(*) FROM vehicles
-UNION ALL SELECT 'ride_requests',    COUNT(*) FROM ride_requests
-UNION ALL SELECT 'ride_assignments', COUNT(*) FROM ride_assignments
-UNION ALL SELECT 'rides',            COUNT(*) FROM rides
-UNION ALL SELECT 'payments',         COUNT(*) FROM payments;
+-- Migration Script
 
-UPDATE driver_profiles dp
-SET
-    avg_rating = COALESCE((
-        SELECT ROUND(AVG(r.rider_rating), 2)
-        FROM rides r
-        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
-        WHERE ra.driver_id = dp.driver_id
-          AND r.rider_rating IS NOT NULL
-    ), 0.00),
-    total_rating_count = COALESCE((
-        SELECT COUNT(*)
-        FROM rides r
-        JOIN ride_assignments ra ON ra.assignment_id = r.assignment_id
-        WHERE ra.driver_id = dp.driver_id
-          AND r.rider_rating IS NOT NULL
-    ), 0);
+USE cityflow_db;
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'suspension_duration'
+);
 
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE users ADD COLUMN suspension_duration ENUM("1_day","3_days","1_week","permanent") NULL DEFAULT NULL',
+  'SELECT "suspension_duration already exists"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'suspended_at'
+);
+
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE users ADD COLUMN suspended_at DATETIME NULL DEFAULT NULL',
+  'SELECT "suspended_at already exists"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND COLUMN_NAME = 'suspension_until'
+);
+
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE users ADD COLUMN suspension_until DATETIME NULL DEFAULT NULL',
+  'SELECT "suspension_until already exists"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'zones'
+    AND COLUMN_NAME = 'base_fare'
+);
+
+SET @sql = IF(@col_exists = 1,
+  'ALTER TABLE zones DROP COLUMN base_fare',
+  'SELECT "base_fare already removed"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'zones'
+    AND COLUMN_NAME = 'fare_per_km'
+);
+
+SET @sql = IF(@col_exists = 1,
+  'ALTER TABLE zones DROP COLUMN fare_per_km',
+  'SELECT "fare_per_km already removed"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'zones'
+    AND COLUMN_NAME = 'is_surge_active'
+);
+
+SET @sql = IF(@col_exists = 1,
+  'ALTER TABLE zones DROP COLUMN is_surge_active',
+  'SELECT "is_surge_active already removed"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'zones'
+    AND COLUMN_NAME = 'surge_multiplier_admin'
+);
+
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE zones ADD COLUMN surge_multiplier_admin DECIMAL(5,2) DEFAULT 1.0',
+  'SELECT "surge_multiplier_admin already exists"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'ride_requests'
+    AND COLUMN_NAME = 'payment_method'
+);
+
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE ride_requests ADD COLUMN payment_method ENUM(''cash'',''card'',''wallet'',''upi'') DEFAULT ''cash''',
+  'SELECT "payment_method already exists"'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- ─────────────────────────────────────────────
 -- SECTION 5: QUERIES (17 total)
@@ -648,16 +741,17 @@ SELECT
     z.area_name,
     z.surge_multiplier,
     z.surge_multiplier_admin,
-    COUNT(p.payment_id)           AS total_rides,
+    COUNT(r.ride_id)              AS total_rides,
     ROUND(SUM(p.total_amount), 2) AS total_revenue,
     ROUND(AVG(p.total_amount), 2) AS avg_fare,
     ROUND(AVG(p.fare_per_km), 2)  AS avg_fare_per_km_charged
 FROM zones z
-LEFT JOIN ride_requests    rq ON rq.zone_id        = z.zone_id
-LEFT JOIN ride_assignments ra ON ra.request_id     = rq.request_id
-LEFT JOIN rides r             ON r.assignment_id   = ra.assignment_id
-LEFT JOIN payments p          ON p.ride_id         = r.ride_id
-WHERE p.payment_status = 'completed' OR p.payment_status IS NULL
+LEFT JOIN ride_requests rq ON rq.zone_id = z.zone_id
+LEFT JOIN ride_assignments ra ON ra.request_id = rq.request_id
+LEFT JOIN rides r ON r.assignment_id = ra.assignment_id
+LEFT JOIN payments p 
+       ON p.ride_id = r.ride_id 
+      AND p.payment_status = 'completed'
 GROUP BY z.zone_id
 ORDER BY total_revenue DESC;
 
@@ -730,6 +824,7 @@ SELECT
     p.payment_status,
     CASE
         WHEN p.payment_id IS NULL AND r.status = 'completed' THEN 'MISSING PAYMENT'
+        WHEN p.payment_status = 'pending'                    THEN 'PAYMENT PENDING'
         WHEN c.cancellation_id IS NOT NULL                   THEN 'CANCELLED'
         ELSE 'OK'
     END AS audit_flag
@@ -803,7 +898,10 @@ SELECT
     z.surge_multiplier_admin,
     COUNT(DISTINCT rq.request_id) AS total_requests,
     COUNT(DISTINCT r.ride_id)     AS completed_rides,
-    ROUND(SUM(p.total_amount), 2) AS total_revenue
+    ROUND(SUM(CASE 
+        WHEN p.payment_status = 'completed' THEN p.total_amount 
+        ELSE 0 
+    END), 2) AS total_revenue
 FROM zones z
 LEFT JOIN ride_requests    rq ON rq.zone_id        = z.zone_id
 LEFT JOIN ride_assignments ra ON ra.request_id     = rq.request_id
@@ -878,22 +976,17 @@ ORDER BY u.suspended_at DESC;
 
 -- Transaction 1: Complete a ride atomically
 START TRANSACTION;
+
     UPDATE rides
        SET status = 'completed', end_time = NOW(), actual_km = 15.5
      WHERE ride_id = 1;
+
     INSERT INTO payments
         (ride_id, rider_id, base_fare, fare_per_km, distance_fare,
          surge_multiplier, surge_amount, total_amount,
          payment_method, payment_status, paid_at)
     VALUES (1, 1, 45.00, 14.00, 217.00, 1.0, 0.00, 262.00, 'upi', 'completed', NOW());
 
-    UPDATE driver_profiles
-       SET is_available = TRUE, total_rides = total_rides + 1
-     WHERE driver_id = 7;
-
-    UPDATE rider_profiles
-       SET total_rides = total_rides + 1, total_spent = total_spent + 262.00
-     WHERE rider_id = 1;
 COMMIT;
 
 
