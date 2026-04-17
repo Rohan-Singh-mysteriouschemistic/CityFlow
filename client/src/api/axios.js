@@ -6,7 +6,7 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('cityflow_token')
+  const token = sessionStorage.getItem('cityflow_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -15,8 +15,8 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('cityflow_token')
-      localStorage.removeItem('cityflow_user')
+      sessionStorage.removeItem('cityflow_token')
+      sessionStorage.removeItem('cityflow_user')
       window.location.href = '/login'
     }
     return Promise.reject(err)

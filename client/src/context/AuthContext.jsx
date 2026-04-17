@@ -8,8 +8,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const stored = localStorage.getItem('cityflow_user')
-    const token  = localStorage.getItem('cityflow_token')
+    const stored = sessionStorage.getItem('cityflow_user')
+    const token  = sessionStorage.getItem('cityflow_token')
     if (stored && token) {
       setUser(JSON.parse(stored))
     }
@@ -18,15 +18,15 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password })
-    localStorage.setItem('cityflow_token', data.token)
-    localStorage.setItem('cityflow_user',  JSON.stringify(data.user))
+    sessionStorage.setItem('cityflow_token', data.token)
+    sessionStorage.setItem('cityflow_user',  JSON.stringify(data.user))
     setUser(data.user)
     return data.user
   }
 
   const logout = () => {
-    localStorage.removeItem('cityflow_token')
-    localStorage.removeItem('cityflow_user')
+    sessionStorage.removeItem('cityflow_token')
+    sessionStorage.removeItem('cityflow_user')
     setUser(null)
   }
 

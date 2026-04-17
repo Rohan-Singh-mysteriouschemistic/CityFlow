@@ -23,8 +23,8 @@ export default function Register() {
       const payload = { ...form }
       if (form.role === 'rider') { delete payload.license_no; delete payload.vehicle }
       const { data } = await api.post('/auth/register', payload)
-      localStorage.setItem('cityflow_token', data.token)
-      localStorage.setItem('cityflow_user',  JSON.stringify(data.user))
+      sessionStorage.setItem('cityflow_token', data.token)
+      sessionStorage.setItem('cityflow_user',  JSON.stringify(data.user))
       toast.success('Account created!')
       navigate(`/${data.user.role}`)
     } catch (err) {
