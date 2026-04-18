@@ -51,7 +51,7 @@ export default function Login() {
           <p style={styles.heroP}>Fast, reliable, affordable rides across all 15 zones of the capital.</p>
         </div>
         <div style={styles.stats}>
-          {[['15', 'Delhi Zones'], ['500+', 'Daily Rides'], ['4.8★', 'Avg Rating']].map(([val, label]) => (
+          {[['15', 'Delhi Zones'], ['3', 'User Roles'], ['100%', 'Scalability Potential']].map(([val, label]) => (
             <div key={label} style={styles.stat}>
               <span style={styles.statVal}>{val}</span>
               <span style={styles.statLabel}>{label}</span>
