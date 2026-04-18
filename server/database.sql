@@ -230,7 +230,7 @@ CREATE INDEX idx_users_suspension     ON users(suspension_until);
 
 
 -- ─────────────────────────────────────────────
--- SECTION 3: TRIGGERS
+-- Task 5: TRIGGERS
 -- ─────────────────────────────────────────────
 
 DELIMITER $$
