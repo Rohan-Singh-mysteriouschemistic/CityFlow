@@ -116,22 +116,14 @@ CityFlow/
 - **Multi-language Support:** Localizing the platform for diverse geographical regions.
 - **Voice Capabilities:** Integrating voice communication or voice-based ride booking.
 
-## 10. Contributing
-Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 11. License
+## 10. License
 Distributed under the MIT License.
 
-## 12. Contact / Authors
+## 11. Contact / Authors
 
 **Contributors:**
-- Contributor 1 - [GitHub](https://github.com/) | [LinkedIn](https://linkedin.com/in/)
-- Contributor 2 - [GitHub](https://github.com/) | [LinkedIn](https://linkedin.com/in/)
-- Contributor 3 - [GitHub](https://github.com/) | [LinkedIn](https://linkedin.com/in/)
+- Rohan Singh - [GitHub](https://github.com/Rohan-Singh-mysteriouschemistic)
+- Shabd Yadav - [GitHub](https://github.com/YadavShabd02)
+- Achintya Rajput - [GitHub](https://github.com/AchintyaRajput)
 
-Project Link: [https://github.com/yourusername/CityFlow](https://github.com/yourusername/CityFlow)
+Project Link: [https://github.com/Rohan-Singh-mysteriouschemistic/CityFlow](https://github.com/Rohan-Singh-mysteriouschemistic/CityFlow)
