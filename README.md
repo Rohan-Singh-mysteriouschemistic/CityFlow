@@ -5,9 +5,11 @@
 It solves the complex problem of efficient ride assignments, surge pricing, and concurrent database operations in high-traffic logistics environments. Built for scale, it handles robust database concurrency and seamless map integration to deliver a premium user experience.
 
 ## 2. Features
-- **Real-Time Ride Matching:** Automatically assigns riders to nearby drivers.
+- **Real-Time Ride Matching & WebSockets:** Sub-second map updates and notifications via Socket.io.
+- **Advanced Route-Constrained Pooling:** Dynamically matches drivers with multiple pool requests along concurrent route corridors using custom elliptical Haversine algebra.
+- **Dynamic Multi-Stop Itineraries:** Fully integrated JSON arrays inside MySQL allowing riders to dynamically append mid-trip waypoints, adjusting fares and Mapbox polylines in real-time.
 - **Dynamic Pricing & Surge:** Handles dynamic zone-based surge multipliers safely under high loads.
-- **Interactive Maps:** Real-time location tracking using Mapbox.
+- **Interactive Maps:** Real-time routing, active locations, and waypoint plotting using Mapbox GL.
 - **Robust Concurrency Control:** Implements advanced ACID properties, transactions, and `SELECT FOR UPDATE` to prevent race conditions during ride assignments.
 - **User Personas:** Interactive dashboards and roles for Riders, Drivers, and Admins.
 
@@ -108,14 +110,15 @@ CityFlow/
 
 ## 8. Challenges & Learnings
 - **Database Concurrency Control:** Handling ride acceptance requests simultaneously from multiple drivers posed a risk of race conditions resulting in double bookings or deadlocks. We solved this by using strict transaction blocks and `SELECT ... FOR UPDATE` pessimistic locks in MySQL.
-- **Real-Time Geospatial Logic:** Calculating distances and linking drivers to the right operational zones dynamically.
+- **Geospatial Route Locking:** Traditional rideshare simple radius matching created terrible UX for multi-passenger Pools. We resolved this by building a custom sequential path-segment alignment algorithm (Haversine-based elliptical check) that ensures passengers are heading exactly the same direction down the actual route corridor.
+- **Real-Time Architecture:** Implementing reliable WebSocket links that handshake cleanly with REST endpoints to maintain live driver/rider location data.
 - **Complex Triggers:** Maintaining driver ratings, total rides, and system logs seamlessly through backend database triggers without slowing down application responses.
 
 ## 9. Future Improvements
-- **WebSocket Integration:** Transition from standard polling/REST calls to WebSockets for sub-second, real-time map updates.
 - **Admin Analytics Dashboard:** Advanced charts to visualize zone-wise revenue and user growth correctly.
 - **Multi-language Support:** Localizing the platform for diverse geographical regions.
 - **Voice Capabilities:** Integrating voice communication or voice-based ride booking.
+- **Payment Gateway Integration:** Wrapping the checkout flow with Razorpay or Stripe instead of mock processing.
 
 ## 10. License
 Distributed under the MIT License.
