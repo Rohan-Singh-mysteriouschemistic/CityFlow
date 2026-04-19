@@ -13,8 +13,9 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
  *   dropCoords   — [lng, lat] array for drop location
  *   height       — CSS height string (default: '300px')
  *   routeGeometry — Pre-fetched GeoJSON geometry (optional, avoids re-fetch)
+ *   stopsCoords   — Array of [lng, lat] for intermediate stops
  */
-export default function MapRoute({ pickupCoords, dropCoords, height = '300px', routeGeometry = null }) {
+export default function MapRoute({ pickupCoords, dropCoords, stopsCoords = [], height = '300px', routeGeometry = null }) {
   const [route, setRoute] = useState(null)
   const [viewState, setViewState] = useState({
     longitude: 77.2090,
@@ -28,17 +29,15 @@ export default function MapRoute({ pickupCoords, dropCoords, height = '300px', r
     if (!pickupCoords || !dropCoords || !mapRef.current) return
     try {
       const padding = { top: 50, bottom: 50, left: 50, right: 50 }
-      const sw = [
-        Math.min(pickupCoords[0], dropCoords[0]),
-        Math.min(pickupCoords[1], dropCoords[1])
-      ]
-      const ne = [
-        Math.max(pickupCoords[0], dropCoords[0]),
-        Math.max(pickupCoords[1], dropCoords[1])
-      ]
+      const coords = [pickupCoords, ...stopsCoords, dropCoords];
+      const lngs = coords.map(c => c[0]);
+      const lats = coords.map(c => c[1]);
+      
+      const sw = [Math.min(...lngs), Math.min(...lats)]
+      const ne = [Math.max(...lngs), Math.max(...lats)]
       mapRef.current.fitBounds([sw, ne], { padding, duration: 800 })
     } catch {}
-  }, [pickupCoords, dropCoords])
+  }, [pickupCoords, dropCoords, stopsCoords])
 
   // Fetch route on coord change
   useEffect(() => {
@@ -50,7 +49,7 @@ export default function MapRoute({ pickupCoords, dropCoords, height = '300px', r
     if (!pickupCoords || !dropCoords) return
     let cancelled = false
     ;(async () => {
-      const data = await fetchRoute(pickupCoords, dropCoords)
+      const data = await fetchRoute(pickupCoords, dropCoords, stopsCoords)
       if (!cancelled && data?.geometry) {
         setRoute(data.geometry)
         setTimeout(fitBounds, 100)
@@ -60,7 +59,7 @@ export default function MapRoute({ pickupCoords, dropCoords, height = '300px', r
       }
     })()
     return () => { cancelled = true }
-  }, [pickupCoords?.[0], pickupCoords?.[1], dropCoords?.[0], dropCoords?.[1], routeGeometry]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pickupCoords?.[0], pickupCoords?.[1], dropCoords?.[0], dropCoords?.[1], JSON.stringify(stopsCoords), routeGeometry]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Token check
   if (!MAPBOX_TOKEN || MAPBOX_TOKEN.includes('your_mapbox')) {
@@ -159,6 +158,17 @@ export default function MapRoute({ pickupCoords, dropCoords, height = '300px', r
           </div>
         </Marker>
 
+        {/* Stops markers */}
+        {stopsCoords.map((coord, idx) => (
+          <Marker key={idx} longitude={coord[0]} latitude={coord[1]} anchor="center">
+            <div style={{
+              width: 16, height: 16, borderRadius: '50%',
+              background: '#f5a623', border: '2px solid #fff',
+              boxShadow: '0 0 10px rgba(245,166,35,.6)'
+            }} />
+          </Marker>
+        ))}
+
         {/* Drop marker */}
         <Marker longitude={dropCoords[0]} latitude={dropCoords[1]} anchor="center">
           <div style={{
@@ -187,6 +197,14 @@ export default function MapRoute({ pickupCoords, dropCoords, height = '300px', r
           borderRadius: 6, backdropFilter: 'blur(6px)',
           border: '1px solid rgba(79,140,255,.3)'
         }}>● PICKUP</span>
+        {stopsCoords.length > 0 && (
+          <span style={{
+            background: 'rgba(245,166,35,.2)', color: '#f5a623',
+            fontSize: 10, fontWeight: 600, padding: '3px 8px',
+            borderRadius: 6, backdropFilter: 'blur(6px)',
+            border: '1px solid rgba(245,166,35,.3)'
+          }}>● STOP</span>
+        )}
         <span style={{
           background: 'rgba(124,106,255,.2)', color: '#7c6aff',
           fontSize: 10, fontWeight: 600, padding: '3px 8px',

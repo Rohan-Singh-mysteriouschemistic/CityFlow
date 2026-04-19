@@ -4,6 +4,7 @@ import api from '../../api/axios'
 import toast from 'react-hot-toast'
 import MapRoute from '../../components/MapRoute'
 import LocationSearch from '../../components/LocationSearch'
+import { useSocket } from '../../context/SocketContext'
 
 const S = {
   shell: { display:'flex', minHeight:'100vh', background:'#0a0a0a' },
@@ -99,8 +100,8 @@ export default function DriverDashboard() {
   const [profile,    setProfile]    = useState(null)
   const [history,    setHistory]    = useState([])
   const [available,  setAvailable]  = useState(false)
-  const [activeRide, setActiveRide] = useState(null)
-  const [otp,        setOtp]        = useState('')
+  const [activeRides, setActiveRides] = useState([])
+  const [otps,        setOtps]        = useState({}) // store OTP per ride_id
   const [loading,    setLoading]    = useState(false)
   const [requests,   setRequests]   = useState([])
   const [requestsLoading, setRequestsLoading] = useState(false)
@@ -112,6 +113,7 @@ export default function DriverDashboard() {
   const [locLoading,   setLocLoading]   = useState(false)
   // ────────────────────────────────────────────
   const prevRequestIds = useRef([])
+  const { socket } = useSocket();
 
   // ── initial load ──────────────────────────────────────────
   useEffect(() => {
@@ -135,7 +137,7 @@ export default function DriverDashboard() {
       checkActiveRide()
     }, 5000)
     return () => clearInterval(interval)
-  }, [tab, activeRide]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, activeRides]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── notify driver when a NEW request appears in their zone ─
   useEffect(() => {
@@ -150,10 +152,28 @@ export default function DriverDashboard() {
           border: '1px solid #2dd4a0', borderRadius: 10
         }
       })
-      if (available && !activeRide) setTab('requests')
+      if (available && activeRides.length === 0) setTab('requests')
     }
     prevRequestIds.current = currentIds
   }, [requests]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── WebSocket Listeners ─────────────────────────────────
+  useEffect(() => {
+    if (!socket || !profile?.current_zone_id) return;
+
+    // Join the zone room automatically
+    socket.emit('join_zone', profile.current_zone_id);
+
+    const handleNewRequest = (data) => {
+      if (available && activeRides.length < 4) { // Up to 4 for pool
+        toast('🚖 New ride request in your zone!', { duration: 4000, icon: '⚡' });
+        loadRequests();
+      }
+    };
+
+    socket.on('new_ride_request', handleNewRequest);
+    return () => socket.off('new_ride_request', handleNewRequest);
+  }, [socket, profile?.current_zone_id, available, activeRides]);
 
   const loadRequests = async () => {
     try {
@@ -178,8 +198,8 @@ export default function DriverDashboard() {
   const checkActiveRide = async () => {
     try {
       const r = await api.get('/rides/active/driver')
-      setActiveRide(r.data.ride || null)
-      if (!r.data.ride) loadRequests()
+      setActiveRides(r.data.rides || [])
+      if (!r.data.rides || r.data.rides.length === 0) loadRequests()
     } catch {}
   }
 
@@ -208,9 +228,9 @@ export default function DriverDashboard() {
 
   // ── accept: first-come-first-served ──────────────────────
   const acceptRequest = async (request_id) => {
-    if (activeRide) {
-      toast.error('Complete your current ride before accepting a new one')
-      return
+    if (activeRides.length > 0 && activeRides.some(r => r.is_pool !== 1)) {
+      toast.error('Complete your standard ride before accepting a new one. Or upgrade to Pool.')
+      // Not returning here just to let the backend handle the exact rejection message 
     }
     setAccepting(request_id)
     try {
@@ -257,6 +277,7 @@ export default function DriverDashboard() {
   }
 
   const startRide = async (ride_id) => {
+    const otp = otps[ride_id];
     if (!otp || otp.length !== 4) return toast.error('Enter 4-digit OTP')
     setLoading(true)
     try {
@@ -271,9 +292,10 @@ export default function DriverDashboard() {
   }
 
   const completeRide = async (ride_id) => {
+    const ride = activeRides.find(r => r.ride_id === ride_id)
     setLoading(true)
     try {
-      await api.patch(`/rides/${ride_id}/complete`, { actual_km: activeRide?.estimated_km || 12 })
+      await api.patch(`/rides/${ride_id}/complete`, { actual_km: ride?.estimated_km || 12 })
       toast.success('Ride completed! Please confirm payment.')
       setPaymentConfirmed(false)
       await checkActiveRide()
@@ -291,10 +313,10 @@ export default function DriverDashboard() {
       await api.patch(`/rides/${ride_id}/confirm-payment`)
       toast.success('Payment confirmed!')
       setPaymentConfirmed(true)
-      setActiveRide(null)
-      setOtp('')
+      await checkActiveRide()
+      setOtps(prev => { const n = {...prev}; delete n[ride_id]; return n; })
       loadHistory()
-      setTab('home')
+      if (activeRides.length <= 1) setTab('home'); // only go home if that was the last ride
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to confirm payment')
     } finally {
@@ -302,7 +324,11 @@ export default function DriverDashboard() {
     }
   }
 
-  const hasActiveRide   = !!activeRide
+  const hasActiveRide   = activeRides.length > 0
+  const isAllPool       = hasActiveRide && activeRides.every(r => r.is_pool === 1 || r.is_pool === true || r.is_pool === '1')
+  const isPoolFull      = activeRides.length >= 4
+  const canAcceptMore   = !hasActiveRide || (isAllPool && !isPoolFull)
+
   const totalEarned     = history.reduce((s,r) => s + parseFloat(r.total_amount||0), 0)
   const completedCnt    = history.filter(r => r.status === 'completed').length
   const avgRating       = profile?.avg_rating || 0
@@ -314,8 +340,8 @@ export default function DriverDashboard() {
   const navItems = [
     { id:'home',     label:'Dashboard',   icon:'📊', disabled: false },
     { id:'requests', label:'Requests',    icon:'📬',
-      disabled: hasActiveRide,
-      badge: !hasActiveRide && requests.length > 0 ? requests.length : null },
+      disabled: !canAcceptMore,
+      badge: canAcceptMore && requests.length > 0 ? requests.length : null },
     { id:'active',   label:'Active Ride', icon:'🚗', disabled: false },
     { id:'history',  label:'My Rides',    icon:'🕒', disabled: false },
     { id:'profile',  label:'Profile',     icon:'👤', disabled: false },
@@ -465,23 +491,23 @@ export default function DriverDashboard() {
               </div>
               <div style={{fontSize:13, color:'#8b93a8', marginBottom:28}}>
                 {hasActiveRide
-                  ? '🚗 You have an active ride in progress'
+                  ? `🚗 You have ${activeRides.length} active ride(s) in progress`
                   : available
                     ? 'You are online and accepting rides'
                     : 'You are offline — toggle to go online'}
               </div>
 
-              {/* Active ride banner */}
-              {hasActiveRide && (
-                <div style={{
+              {/* Active ride banners */}
+              {hasActiveRide && activeRides.map((ride, idx) => (
+                <div key={ride.ride_id} style={{
                   background:'rgba(79,140,255,.08)', border:'1px solid rgba(79,140,255,.3)',
                   borderRadius:12, padding:'16px 20px', marginBottom:20,
                   display:'flex', alignItems:'center', justifyContent:'space-between'
                 }}>
                   <div>
-                    <div style={{fontSize:13, fontWeight:600, color:'#4f8cff', marginBottom:2}}>Active Ride</div>
+                    <div style={{fontSize:13, fontWeight:600, color:'#4f8cff', marginBottom:2}}>Active Ride {idx + 1}</div>
                     <div style={{fontSize:12, color:'#8b93a8'}}>
-                      {activeRide.pickup_address} → {activeRide.drop_address}
+                      {ride.pickup_address} → {ride.drop_address}
                     </div>
                   </div>
                   <button style={{
@@ -492,7 +518,7 @@ export default function DriverDashboard() {
                     View Ride →
                   </button>
                 </div>
-              )}
+              ))}
 
               <div style={S.grid4}>
                 <div style={{...S.kpi, borderTop:'2px solid #2dd4a0'}}>
@@ -702,8 +728,13 @@ export default function DriverDashboard() {
                     opacity: accepting && accepting !== r.request_id ? 0.5 : 1,
                     transition:'opacity .2s'
                   }}>
-                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
-                      <span style={{fontSize:13, fontWeight:600, color:'#e8eaf0'}}>{r.rider_name}</span>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:8, alignItems: 'center'}}>
+                      <div style={{display:'flex', alignItems:'center', gap: 8}}>
+                        <span style={{fontSize:13, fontWeight:600, color:'#e8eaf0'}}>{r.rider_name}</span>
+                        {r.is_pool === 1 && (
+                          <span style={{background:'rgba(245,166,35,.15)', color:'#f5a623', padding:'2px 6px', borderRadius:4, fontSize:10, fontWeight:700, letterSpacing:0.5}}>SHARED POOL</span>
+                        )}
+                      </div>
                       <span style={{fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:700, color:'#2dd4a0'}}>
                         ₹{parseFloat(r.estimated_fare).toFixed(0)}
                       </span>
@@ -711,6 +742,11 @@ export default function DriverDashboard() {
                     <div style={{fontSize:12, color:'#8b93a8', marginBottom:4}}>
                       📍 {r.pickup_address}
                     </div>
+                    {r.stops && (typeof r.stops === 'string' ? JSON.parse(r.stops) : r.stops).map((s, i) => (
+                      <div key={i} style={{fontSize:12, color:'#f5a623', marginBottom:4}}>
+                        ● Stop {i+1}: {s.address}
+                      </div>
+                    ))}
                     <div style={{fontSize:12, color:'#8b93a8', marginBottom:12}}>
                       🏁 {r.drop_address}
                     </div>
@@ -720,6 +756,7 @@ export default function DriverDashboard() {
                         <MapRoute
                           pickupCoords={[parseFloat(r.pickup_lng), parseFloat(r.pickup_lat)]}
                           dropCoords={[parseFloat(r.drop_lng), parseFloat(r.drop_lat)]}
+                          stopsCoords={r.stops ? (typeof r.stops === 'string' ? JSON.parse(r.stops) : r.stops).map(s => [parseFloat(s.lng), parseFloat(s.lat)]) : []}
                           height="140px"
                         />
                       </div>
@@ -754,11 +791,16 @@ export default function DriverDashboard() {
           {/* ── ACTIVE RIDE TAB ── */}
           {tab === 'active' && (
             <div style={{maxWidth:500}}>
-              {activeRide ? (
-                <div style={S.card}>
+              {activeRides.length > 0 ? activeRides.map((ride, idx) => (
+                <div key={ride.ride_id} style={{ ...S.card, marginBottom: 24 }}>
                   <div style={S.cardHead}>
-                    <span style={S.cardTitle}>Current Ride</span>
-                    <span style={S.pill(activeRide.status)}>{activeRide.status?.replace('_',' ')}</span>
+                    <div style={{display:'flex', alignItems:'center', gap:8}}>
+                      <span style={S.cardTitle}>Ride #{idx+1}: {ride.rider_name}</span>
+                      {ride.is_pool === 1 && (
+                        <span style={{background:'rgba(245,166,35,.15)', color:'#f5a623', padding:'2px 6px', borderRadius:4, fontSize:10, fontWeight:700, letterSpacing:0.5}}>SHARED POOL</span>
+                      )}
+                    </div>
+                    <span style={S.pill(ride.status)}>{ride.status?.replace('_',' ')}</span>
                   </div>
                   <div style={S.cardBody}>
 
@@ -774,16 +816,17 @@ export default function DriverDashboard() {
                         fontFamily:"'Syne',sans-serif", fontSize:36, fontWeight:800,
                         color:'#2dd4a0', letterSpacing:10
                       }}>
-                        {activeRide.otp || '••••'}
+                        {ride.otp || '••••'}
                       </div>
                     </div>
 
                     {/* Route Map */}
-                    {activeRide.pickup_lat && activeRide.drop_lat && (
+                    {ride.pickup_lat && ride.drop_lat && (
                       <div style={{ marginBottom: 20 }}>
                         <MapRoute
-                          pickupCoords={[parseFloat(activeRide.pickup_lng), parseFloat(activeRide.pickup_lat)]}
-                          dropCoords={[parseFloat(activeRide.drop_lng), parseFloat(activeRide.drop_lat)]}
+                          pickupCoords={[parseFloat(ride.pickup_lng), parseFloat(ride.pickup_lat)]}
+                          dropCoords={[parseFloat(ride.drop_lng), parseFloat(ride.drop_lat)]}
+                          stopsCoords={ride.stops ? (typeof ride.stops === 'string' ? JSON.parse(ride.stops) : ride.stops).map(s => [parseFloat(s.lng), parseFloat(s.lat)]) : []}
                           height="220px"
                         />
                       </div>
@@ -791,11 +834,11 @@ export default function DriverDashboard() {
 
                     {/* Ride details */}
                     {[
-                      ['Rider',    activeRide.rider_name],
-                      ['Pickup',   activeRide.pickup_address],
-                      ['Drop',     activeRide.drop_address],
-                      ['Distance', `${activeRide.estimated_km} km`],
-                      ['Fare',     `₹${parseFloat(activeRide.total_amount || activeRide.estimated_fare || 0).toFixed(0)}`],
+                      ['Pickup',   ride.pickup_address],
+                      ...(ride.stops ? (typeof ride.stops === 'string' ? JSON.parse(ride.stops) : ride.stops).map((s, i) => [`Stop ${i+1}`, s.address]) : []),
+                      ['Drop',     ride.drop_address],
+                      ['Distance', `${ride.estimated_km} km`],
+                      ['Fare',     `₹${parseFloat(ride.total_amount || ride.estimated_fare || 0).toFixed(0)}`],
                     ].map(([k,v]) => (
                       <div key={k} style={{
                         display:'flex', justifyContent:'space-between',
@@ -807,19 +850,19 @@ export default function DriverDashboard() {
                     ))}
 
                     {/* OTP input to start ride */}
-                    {activeRide.status === 'accepted' && (
+                    {ride.status === 'accepted' && (
                       <div style={{marginTop:20}}>
                         <div style={{fontSize:12, color:'#8b93a8', marginBottom:8}}>
-                          Enter the 4-digit OTP the rider shares with you
+                          Enter the 4-digit OTP {ride.rider_name} shares with you
                         </div>
                         <input
                           style={{...S.input, marginBottom:12, letterSpacing:8, fontSize:20, textAlign:'center'}}
                           placeholder="_ _ _ _" maxLength={4}
-                          value={otp} onChange={e => setOtp(e.target.value)}
+                          value={otps[ride.ride_id] || ''} onChange={e => setOtps(prev => ({...prev, [ride.ride_id]: e.target.value}))}
                         />
                         <button
                           style={{...S.btn, opacity:loading?0.7:1}}
-                          onClick={() => startRide(activeRide.ride_id)}
+                          onClick={() => startRide(ride.ride_id)}
                           disabled={loading}
                         >
                           {loading ? 'Starting...' : '▶ Start Ride'}
@@ -827,11 +870,11 @@ export default function DriverDashboard() {
                       </div>
                     )}
 
-                    {activeRide.status === 'in_progress' && (
+                    {ride.status === 'in_progress' && (
                       <div style={{marginTop:20}}>
                         <button
                           style={{...S.btn, opacity:loading?0.7:1}}
-                          onClick={() => completeRide(activeRide.ride_id)}
+                          onClick={() => completeRide(ride.ride_id)}
                           disabled={loading}
                         >
                           {loading ? 'Completing...' : '✓ Complete Ride'}
@@ -839,7 +882,7 @@ export default function DriverDashboard() {
                       </div>
                     )}
 
-                    {activeRide.status === 'completed' && !paymentConfirmed && (
+                    {ride.status === 'completed' && !paymentConfirmed && (
                       <div style={{marginTop:20}}>
                         <div style={{
                           background:'rgba(245,166,35,.06)', border:'1px solid rgba(245,166,35,.25)',
@@ -854,16 +897,17 @@ export default function DriverDashboard() {
                         </div>
                         <button
                           style={{...S.btn, background:'linear-gradient(135deg,#2dd4a0,#4f8cff)', opacity:loading?0.7:1}}
-                          onClick={() => confirmPayment(activeRide.ride_id)}
+                          onClick={() => confirmPayment(ride.ride_id)}
                           disabled={loading}
                         >
                           {loading ? 'Confirming...' : '✔ Confirm Payment Received'}
                         </button>
                       </div>
                     )}
+
                   </div>
                 </div>
-              ) : (
+              )) : (
                 <div style={{...S.card, padding:48, textAlign:'center'}}>
                   <div style={{fontSize:40, marginBottom:16}}>🚗</div>
                   <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:600, color:'#e8eaf0', marginBottom:8}}>

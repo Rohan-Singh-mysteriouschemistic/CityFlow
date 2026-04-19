@@ -12,6 +12,7 @@ It solves the complex problem of efficient ride assignments, surge pricing, and 
 - **User Personas:** Interactive dashboards and roles for Riders, Drivers, and Admins.
 
 ## 3. Tech Stack
+
 - **Frontend:** React.js, Vite, Mapbox-GL for maps, Lucide React (Icons).
 - **Backend:** Node.js, Express.js (v5), Zod for validation, JSON Web Tokens (JWT).
 - **Database:** MySQL (mysql2) — utilizing complex queries, views, triggers, and transactions for maximum data integrity.

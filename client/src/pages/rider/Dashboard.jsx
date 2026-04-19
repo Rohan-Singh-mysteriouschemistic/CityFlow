@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import LocationSearch from '../../components/LocationSearch'
 import MapRoute from '../../components/MapRoute'
 import { fetchRoute, haversineDistance } from '../../utils/mapUtils'
+import { useSocket } from '../../context/SocketContext'
 
 const S = {
   shell: { display:'flex', minHeight:'100vh', background:'#0a0a0a' },
@@ -102,7 +103,8 @@ export default function RiderDashboard() {
   const [form, setForm] = useState({
     pickup_address:'', pickup_lat: null, pickup_lng: null,
     drop_address:'',   drop_lat:  null, drop_lng:  null,
-    vehicle_type:'sedan', estimated_km:'', payment_method:''
+    stops: [],
+    vehicle_type:'sedan', estimated_km:'', payment_method:'', is_pool: false
   })
   // ── Zones state ──────────────────────────────────────────
   const [zones, setZones] = useState([])
@@ -129,10 +131,12 @@ export default function RiderDashboard() {
     const drop   = [form.drop_lng,   form.drop_lat]
     if (!pickup[0] || !pickup[1] || !drop[0] || !drop[1]) return
 
+    const stopsCoords = form.stops.filter(s => s.lng && s.lat).map(s => [s.lng, s.lat])
+
     let cancelled = false
     setRouteLoading(true)
     ;(async () => {
-      const data = await fetchRoute(pickup, drop)
+      const data = await fetchRoute(pickup, drop, stopsCoords)
       if (cancelled) return
       if (data) {
         setRouteData(data)
@@ -146,7 +150,33 @@ export default function RiderDashboard() {
       setRouteLoading(false)
     })()
     return () => { cancelled = true }
-  }, [pickupSet, dropSet, form.pickup_lat, form.pickup_lng, form.drop_lat, form.drop_lng]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pickupSet, dropSet, form.pickup_lat, form.pickup_lng, form.drop_lat, form.drop_lng, JSON.stringify(form.stops)]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { socket } = useSocket();
+
+  // ── WebSocket Listeners ─────────────────────────────────
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleAccepted = () => {
+      toast.success('🚗 A driver has accepted your ride!');
+      checkActiveRide();
+      setTab('active');
+    };
+    
+    const handleCompleted = () => {
+      toast.success('🏁 Your ride is completed!');
+      checkActiveRide();
+    };
+
+    socket.on('ride_accepted', handleAccepted);
+    socket.on('ride_completed', handleCompleted);
+
+    return () => {
+      socket.off('ride_accepted', handleAccepted);
+      socket.off('ride_completed', handleCompleted);
+    }
+  }, [socket]);
 
   // ── initial load ──────────────────────────────────────────
   useEffect(() => {
@@ -591,6 +621,27 @@ export default function RiderDashboard() {
                           }}
                         />
                       </div>
+
+                      {form.stops.map((stop, idx) => (
+                        <div key={idx} style={S.field}>
+                          <LocationSearch
+                            label={`Stop ${idx + 1}`}
+                            placeholder="e.g. India Gate"
+                            value={stop.address}
+                            onSelect={({ address, lat, lng }) => {
+                              const newStops = [...form.stops];
+                              newStops[idx] = { address, lat, lng };
+                              setForm(f => ({ ...f, stops: newStops }));
+                            }}
+                          />
+                        </div>
+                      ))}
+                      {form.stops.length < 3 && (
+                        <button type="button" onClick={() => setForm(f => ({ ...f, stops: [...f.stops, { address: '', lat: null, lng: null }] }))} style={{background:'none', border:'none', color:'#f5a623', fontSize:12, cursor:'pointer', marginBottom:14, fontWeight:600}}>
+                          + Add Stop
+                        </button>
+                      )}
+
                       <div style={S.field}>
                         <LocationSearch
                           label="Drop Location"
@@ -609,6 +660,7 @@ export default function RiderDashboard() {
                           <MapRoute
                             pickupCoords={[form.pickup_lng, form.pickup_lat]}
                             dropCoords={[form.drop_lng, form.drop_lat]}
+                            stopsCoords={form.stops.filter(s => s.lng && s.lat).map(s => [s.lng, s.lat])}
                             height="200px"
                             routeGeometry={routeData?.geometry || null}
                           />
@@ -633,6 +685,30 @@ export default function RiderDashboard() {
                             <option key={t} value={t}>{t.toUpperCase()}</option>
                           ))}
                         </select>
+                      </div>
+
+                      {/* Pooling Toggle */}
+                      <div style={{...S.field, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(79,140,255,0.05)', padding: '12px 14px', borderRadius: 8, border: '1px solid rgba(79,140,255,0.2)'}}>
+                        <div>
+                          <label style={{...S.label, marginBottom: 2, color: '#4f8cff'}}>Share Route (Pool)</label>
+                          <div style={{fontSize: 11, color: '#8b93a8'}}>Save 20% by sharing your ride</div>
+                        </div>
+                        <label style={{position: 'relative', display: 'inline-block', width: 44, height: 24}}>
+                          <input type="checkbox" style={{opacity: 0, width: 0, height: 0}}
+                            checked={form.is_pool}
+                            onChange={(e) => setForm(f => ({...f, is_pool: e.target.checked}))}
+                          />
+                          <span style={{
+                            position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: form.is_pool ? '#4f8cff' : '#1e2330',
+                            transition: '.4s', borderRadius: 24, border: '1px solid ' + (form.is_pool ? '#4f8cff' : '#2a2f3e')
+                          }}>
+                            <span style={{
+                              position: 'absolute', height: 16, width: 16, left: form.is_pool ? 22 : 4, bottom: 3,
+                              backgroundColor: 'white', transition: '.4s', borderRadius: '50%'
+                            }}></span>
+                          </span>
+                        </label>
                       </div>
 
                       {/* Auto-calculated distance (read-only) */}
@@ -735,6 +811,7 @@ export default function RiderDashboard() {
                         <MapRoute
                           pickupCoords={[parseFloat(activeRide.pickup_lng), parseFloat(activeRide.pickup_lat)]}
                           dropCoords={[parseFloat(activeRide.drop_lng), parseFloat(activeRide.drop_lat)]}
+                          stopsCoords={activeRide.stops ? (typeof activeRide.stops === 'string' ? JSON.parse(activeRide.stops) : activeRide.stops).map(s => [parseFloat(s.lng), parseFloat(s.lat)]) : []}
                           height="250px"
                         />
                       </div>

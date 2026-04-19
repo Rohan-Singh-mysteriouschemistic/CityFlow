@@ -3,20 +3,22 @@ const db = require('../config/db');
 // ── CREATE REQUEST ────────────────────────────────────────────────────────────
 const createRequest = async (data) => {
   const [result] = await db.execute(
-    `INSERT INTO ride_requests
-     (rider_id, pickup_address, pickup_lat, pickup_lng,
-      drop_address, drop_lat, drop_lng, zone_id,
-      vehicle_type, estimated_fare, estimated_km,
-      payment_method, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))`,
+     `INSERT INTO ride_requests
+      (rider_id, pickup_address, pickup_lat, pickup_lng,
+       drop_address, drop_lat, drop_lng, zone_id,
+       vehicle_type, estimated_fare, estimated_km,
+       payment_method, expires_at, stops, is_pool)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?, ?)`,
     [
       data.rider_id,
       data.pickup_address, data.pickup_lat,  data.pickup_lng,
       data.drop_address,   data.drop_lat,    data.drop_lng,
       data.zone_id || null,  data.vehicle_type,
       data.estimated_fare, data.estimated_km,
-      data.payment_method || 'cash'
+      data.payment_method || 'cash',
+      data.stops ? JSON.stringify(data.stops) : null,
+      data.is_pool ? 1 : 0
     ]
   );
   return result.insertId;
@@ -31,7 +33,7 @@ const createRequest = async (data) => {
 const getPendingRequestsForDriver = async (driver_id) => {
   const [rows] = await db.execute(
     `SELECT rq.request_id, rq.pickup_address, rq.pickup_lat, rq.pickup_lng,
-            rq.drop_address, rq.drop_lat, rq.drop_lng,
+            rq.drop_address, rq.drop_lat, rq.drop_lng, rq.stops, rq.is_pool,
             rq.estimated_fare, rq.estimated_km, rq.vehicle_type,
             rq.requested_at,
             z.zone_name, z.surge_multiplier AS zone_multiplier,
@@ -106,7 +108,7 @@ const getRideById = async (ride_id) => {
     `SELECT r.*,
             ra.driver_id, ra.request_id, ra.status AS assignment_status,
             rq.rider_id,  rq.pickup_address,  rq.drop_address,
-            rq.pickup_lat, rq.pickup_lng, rq.drop_lat, rq.drop_lng,
+            rq.pickup_lat, rq.pickup_lng, rq.drop_lat, rq.drop_lng, rq.stops, rq.is_pool,
             rq.estimated_fare, rq.estimated_km, rq.vehicle_type,
             rq.payment_method,
             u_rider.full_name  AS rider_name,

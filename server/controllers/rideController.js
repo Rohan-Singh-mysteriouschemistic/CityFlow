@@ -2,6 +2,7 @@ const db        = require('../config/db');
 const RideModel = require('../models/rideModel');
 const logger    = require('../config/logger');
 const { RIDE_STATUS, CANCELLATION_PENALTY, VEHICLE_BASE_FARES, PER_KM_RATE } = require('../config/constants');
+const { getIO } = require('../config/socket');
 
 // ── Haversine helper (server-side) ───────────────────────────────────────────
 // Returns distance in km between two lat/lng pairs.
@@ -15,6 +16,57 @@ const haversineKm = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+// ── Route Corridor Matching for Advanced Pooling ─────────────────────────────
+// Validates if the new incoming route lies ALONG the active route corridor linearly.
+const isValidPoolRoute = (activeRide, incomingReq) => {
+  const parseStops = (s) => (s ? (typeof s === 'string' ? JSON.parse(s) : s) : []);
+  
+  const activeStops   = parseStops(activeRide.stops);
+  const incomingStops = parseStops(incomingReq.stops);
+
+  const activePoints = [
+    { lat: parseFloat(activeRide.pickup_lat), lng: parseFloat(activeRide.pickup_lng) },
+    ...activeStops.map(s => ({ lat: parseFloat(s.lat), lng: parseFloat(s.lng) })),
+    { lat: parseFloat(activeRide.drop_lat),   lng: parseFloat(activeRide.drop_lng) }
+  ];
+
+  const incomingPoints = [
+    { lat: parseFloat(incomingReq.pickup_lat), lng: parseFloat(incomingReq.pickup_lng) },
+    ...incomingStops.map(s => ({ lat: parseFloat(s.lat), lng: parseFloat(s.lng) })),
+    { lat: parseFloat(incomingReq.drop_lat),   lng: parseFloat(incomingReq.drop_lng) }
+  ];
+
+  const MAX_DEVIATION_KM = 2.0;
+  let lastMatchedSegmentIndex = 0;
+
+  // For every point in the incoming ride, it must fall near a segment of the active ride.
+  // The matched segments must strictly increase or stay the same (ensures directionality).
+  for (const pt of incomingPoints) {
+    let matched = false;
+    for (let i = lastMatchedSegmentIndex; i < activePoints.length - 1; i++) {
+      const A = activePoints[i];
+      const B = activePoints[i+1];
+      
+      const distAP = haversineKm(A.lat, A.lng, pt.lat, pt.lng);
+      const distPB = haversineKm(pt.lat, pt.lng, B.lat, B.lng);
+      const distAB = haversineKm(A.lat, A.lng, B.lat, B.lng);
+      
+      // Elliptical boundary constraint stringently locks the route corridor
+      if (distAP + distPB - distAB <= MAX_DEVIATION_KM) {
+        matched = true;
+        
+        // Ensure same direction constraint inside same segment. 
+        // If pt is pickup and drop is on the same segment, drop must be closer to B than A was.
+        // For simplicity, we just mandate segment indices must not go backwards.
+        lastMatchedSegmentIndex = i;
+        break;
+      }
+    }
+    if (!matched) return false;
+  }
+  return true;
+};
+
 // ── REQUEST A RIDE ────────────────────────────────────────────────────────────
 // NEW FLOW: Creates a pending request only. Does NOT auto-assign a driver.
 // Drivers poll /rides/available and accept themselves (first-accept-wins).
@@ -23,7 +75,7 @@ const requestRide = async (req, res, next) => {
   const {
     pickup_address, pickup_lat, pickup_lng,
     drop_address,   drop_lat,   drop_lng,
-    vehicle_type, estimated_km, payment_method
+    vehicle_type, estimated_km, payment_method, stops, is_pool
   } = req.body;
 
   const validPayments = ['cash','card','wallet','upi'];
@@ -85,15 +137,36 @@ const requestRide = async (req, res, next) => {
     const perKm         = PER_KM_RATE;
     const distance_fare = parseFloat(estimated_km) * perKm;
     const combined_mult = zoneMulti * surgeAdmin;
-    const estimated_fare = parseFloat(((base + distance_fare) * combined_mult).toFixed(2));
+    let estimated_fare = parseFloat(((base + distance_fare) * combined_mult).toFixed(2));
+    if (is_pool) {
+      estimated_fare = parseFloat((estimated_fare * 0.8).toFixed(2)); // 20% pooling discount
+    }
 
     // Create the request in 'pending' status — no driver assigned yet
     const request_id = await RideModel.createRequest({
       rider_id: req.user.user_id,
       pickup_address, pickup_lat, pickup_lng,
       drop_address,   drop_lat,   drop_lng,
-      zone_id, vehicle_type, estimated_fare, estimated_km, payment_method
+      zone_id, vehicle_type, estimated_fare, estimated_km, payment_method, stops, is_pool
     });
+
+    try {
+      const io = getIO();
+      if (zone_id) {
+        // Broadcast to drivers in this zone
+        io.to(`zone_${zone_id}`).emit('new_ride_request', {
+          request_id,
+          pickup_address,
+          drop_address,
+          estimated_fare,
+          vehicle_type,
+          stops,
+          is_pool
+        });
+      }
+    } catch (wsErr) {
+      logger.error('Socket emission failed on requestRide', { message: wsErr.message });
+    }
 
     res.status(201).json({
       message:         'Ride requested! Waiting for a driver to accept.',
@@ -126,7 +199,34 @@ const getAvailableRequests = async (req, res, next) => {
       return res.json({ requests: [] });
     }
 
-    const requests = await RideModel.getPendingRequestsForDriver(req.user.user_id);
+    let requests = await RideModel.getPendingRequestsForDriver(req.user.user_id);
+
+    // Route-Based Pooling Match: Filter by active rides
+    const [activeRides] = await db.execute(
+      `SELECT r.ride_id, rq.is_pool, rq.pickup_lat, rq.pickup_lng, rq.drop_lat, rq.drop_lng, rq.stops
+       FROM ride_assignments ra
+       JOIN rides r ON r.assignment_id = ra.assignment_id
+       JOIN ride_requests rq ON rq.request_id = ra.request_id
+       WHERE ra.driver_id = ?
+         AND r.status IN ('accepted', 'otp_pending', 'in_progress')`,
+      [req.user.user_id]
+    );
+
+    if (activeRides.length > 0) {
+      const isStandardRide = activeRides.some(r => Number(r.is_pool) !== 1);
+      if (isStandardRide) {
+        // Driver on a non-pool ride: lock out all new requests
+        requests = [];
+      } else {
+        // Driver is on a Pool ride: lock new requests rigorously to the corridor
+        requests = requests.filter(reqItem => {
+          if (Number(reqItem.is_pool) !== 1) return false;
+          
+          return activeRides.some(active => isValidPoolRoute(active, reqItem));
+        });
+      }
+    }
+
     res.json({ requests });
   } catch (err) {
     logger.error('getAvailableRequests error', { message: err.message });
@@ -159,20 +259,36 @@ const acceptRequest = async (req, res, next) => {
       });
     }
 
-    // 1. Check the driver has no active ride
-    const [activeRide] = await conn.execute(
-      `SELECT r.ride_id FROM ride_assignments ra
+    // 1. Check active rides and pool limits
+    const [activeRides] = await conn.execute(
+      `SELECT r.ride_id, rq.is_pool FROM ride_assignments ra
        JOIN rides r ON r.assignment_id = ra.assignment_id
+       JOIN ride_requests rq ON rq.request_id = ra.request_id
        WHERE ra.driver_id = ?
-         AND r.status IN ('accepted', 'otp_pending', 'in_progress')
-       LIMIT 1`,
+         AND r.status IN ('accepted', 'otp_pending', 'in_progress')`,
       [driver_id]
     );
-    if (activeRide.length > 0) {
-      await conn.rollback();
-      return res.status(400).json({
-        message: 'Complete your current ride before accepting a new one'
-      });
+
+    const [incomingReq] = await conn.execute(
+       `SELECT is_pool FROM ride_requests WHERE request_id = ?`,
+       [request_id]
+    );
+    const isIncomingPool = incomingReq[0]?.is_pool === 1;
+
+    if (activeRides.length > 0) {
+      const isMix = activeRides.some(r => r.is_pool !== 1);
+      if (!isIncomingPool || isMix) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: 'Complete your current ride before accepting a new regular ride.'
+        });
+      }
+      if (activeRides.length >= 4) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: 'Your carpool is full (max 4 passengers).'
+        });
+      }
     }
 
 
@@ -223,13 +339,28 @@ const acceptRequest = async (req, res, next) => {
       [request_id]
     );
 
-    // 7. Mark driver unavailable
-    await conn.execute(
-      `UPDATE driver_profiles SET is_available = FALSE WHERE driver_id = ?`,
-      [driver_id]
-    );
+    // 7. Mark driver unavailable ONLY if it's not a pool OR if the pool is now full
+    if (!isIncomingPool || activeRides.length >= 3) {
+      await conn.execute(
+        `UPDATE driver_profiles SET is_available = FALSE WHERE driver_id = ?`,
+        [driver_id]
+      );
+    }
 
     await conn.commit();
+
+    // 8. Emit socket event instantly to the rider
+    try {
+      const io = getIO();
+      io.to(`user_${requests[0].rider_id}`).emit('ride_accepted', {
+         message: 'A driver is on the way!',
+         ride_id,
+         driver_id,
+         request_id
+      });
+    } catch(wsErr) {
+      logger.error('Socket emission failed on acceptRequest', { message: wsErr.message });
+    }
 
     // Return OTP so driver sees it immediately after accepting
     res.status(201).json({
@@ -327,7 +458,7 @@ const getActiveRideDriver = async (req, res, next) => {
       `SELECT r.ride_id, r.status, r.start_time,
               rq.pickup_address, rq.pickup_lat, rq.pickup_lng,
               rq.drop_address, rq.drop_lat, rq.drop_lng,
-              rq.estimated_fare, rq.estimated_km,
+              rq.estimated_fare, rq.estimated_km, rq.stops, rq.is_pool,
               rq.payment_method AS ride_payment_method,
               u.full_name AS rider_name,
               u.phone     AS rider_phone,
@@ -343,13 +474,13 @@ const getActiveRideDriver = async (req, res, next) => {
            r.status IN ('accepted', 'otp_pending', 'in_progress')
            OR (r.status = 'completed' AND p.payment_status = 'pending')
          )
-       ORDER BY r.created_at DESC
-       LIMIT 1`,
+       ORDER BY r.created_at ASC`
+      // removed LIMIT 1 so all active pool rides return
+      ,
       [req.user.user_id]
     );
 
-    if (rows.length === 0) return res.json({ ride: null });
-    res.json({ ride: rows[0] });
+    res.json({ rides: rows });
   } catch (err) {
     logger.error('getActiveRideDriver error', { message: err.message });
     next(err);
@@ -470,6 +601,15 @@ const completeRide = async (req, res, next) => {
       );
 
       await conn.commit();
+
+      try {
+        const io = getIO();
+        io.to(`user_${ride.rider_id}`).emit('ride_completed', {
+          message: 'You have arrived!',
+          ride_id,
+          total_amount
+        });
+      } catch(wsErr) {}
 
       res.json({
         message:        'Ride completed',

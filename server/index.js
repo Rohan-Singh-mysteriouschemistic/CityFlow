@@ -66,9 +66,15 @@ app.use((req, res, next) => {
 app.use(errorHandler);
 
 // ── Start Server ──────────────────────────────────────────────────────────────
+const http = require('http');
+const server = http.createServer(app);
+
+const { initSocket } = require('./config/socket');
+initSocket(server);
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  logger.info(`🚀 CityFlow server running on port ${PORT}`, {
+server.listen(PORT, () => {
+  logger.info(`🚀 CityFlow server (HTTP & WS) running on port ${PORT}`, {
     env  : process.env.NODE_ENV || 'development',
     port : PORT,
   });

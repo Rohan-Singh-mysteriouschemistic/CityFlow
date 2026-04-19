@@ -11,10 +11,16 @@ const requestRideSchema = z.object({
   vehicle_type   : z.enum(['auto', 'sedan', 'suv', 'xl', 'bike'], {
     errorMap: () => ({ message: 'Vehicle type must be auto, sedan, suv, xl, or bike' })
   }),
+  is_pool        : z.boolean().optional().default(false),
   estimated_km   : z.coerce.number().positive('Estimated distance must be a positive number'),
   payment_method : z.enum(['cash', 'card', 'wallet', 'upi'], {
     errorMap: () => ({ message: 'Payment method must be cash, card, wallet, or upi' })
   }),
+  stops          : z.array(z.object({
+    address: z.string(),
+    lat: z.coerce.number(),
+    lng: z.coerce.number()
+  })).optional().nullable(),
 });
 
 // ── Rate a Ride ───────────────────────────────────────────────────────────────

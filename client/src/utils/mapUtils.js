@@ -4,10 +4,13 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
  * Fetch driving route between two points using Mapbox Directions API.
  * Returns { distance_km, duration_min, geometry } or null on failure.
  */
-export async function fetchRoute(pickupCoords, dropCoords) {
+export async function fetchRoute(pickupCoords, dropCoords, stopsCoords = []) {
   if (!MAPBOX_TOKEN || MAPBOX_TOKEN.includes('your_mapbox')) return null
   try {
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${pickupCoords[0]},${pickupCoords[1]};${dropCoords[0]},${dropCoords[1]}?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`
+    const coordsStr = [pickupCoords, ...stopsCoords, dropCoords]
+      .map(c => `${c[0]},${c[1]}`)
+      .join(';');
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`
     const res = await fetch(url)
     if (!res.ok) return null
     const data = await res.json()

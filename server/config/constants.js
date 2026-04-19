@@ -27,6 +27,7 @@ module.exports = {
   VEHICLE_BASE_FARES: {
     bike:  50,
     auto:  80,
+    pool:  90,
     sedan: 120,
     suv:   180,
     xl:    220,
