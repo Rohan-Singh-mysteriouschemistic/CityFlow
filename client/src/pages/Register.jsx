@@ -35,9 +35,19 @@ export default function Register() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card page-enter">
-        <h1 className="auth-card__title">CityFlow</h1>
-        <p className="auth-card__sub">Create your account</p>
+      <div className="auth-page__banner">
+        <div className="auth-page__banner-content">
+          <h1 className="auth-page__banner-title">Move with Purpose.</h1>
+          <p className="auth-page__banner-text">
+            Experience the city's premier mobility network. Elevating your journey, block by block.
+          </p>
+        </div>
+      </div>
+      <div className="auth-page__content">
+        <div className="auth-card page-enter">
+          <span className="auth-card__brand">CityFlow</span>
+          <h2 className="auth-card__title">Create your account</h2>
+          <p className="auth-card__sub">Join the premier mobility network.</p>
 
         {error && <p className="form-error" role="alert">{error}</p>}
 
@@ -108,6 +118,7 @@ export default function Register() {
           Already have an account?{' '}
           <Link to="/login" className="auth-link">Sign in</Link>
         </p>
+      </div>
       </div>
     </div>
   )

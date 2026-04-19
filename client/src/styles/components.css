@@ -664,43 +664,104 @@
 /* ── Auth pages ──────────────────────────────────────────── */
 
 .auth-page {
-  min-height: 100vh;
-  background: var(--bg-base);
   display: flex;
-  align-items: center;
+  min-height: 100vh;
+  background: var(--bg-surface);
+}
+
+.auth-page__banner {
+  display: none;
+  flex: 1;
+  background: var(--bg-base);
+  border-right: 1px solid var(--border);
+  position: relative;
+  padding: var(--sp-12);
+}
+
+@media (min-width: 1024px) {
+  .auth-page__banner {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+}
+
+.auth-page__banner-title {
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-4);
+  line-height: var(--lh-heading);
+}
+
+.auth-page__banner-text {
+  font-size: 16px;
+  color: var(--text-secondary);
+  line-height: var(--lh-body);
+  max-width: 420px;
+}
+
+.auth-page__content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
   justify-content: center;
-  padding: var(--sp-6);
+  padding: var(--sp-8);
+  background: var(--bg-surface);
+}
+
+@media (min-width: 1024px) {
+  .auth-page__content {
+    width: 600px;
+    padding: var(--sp-16) var(--sp-16) var(--sp-16) var(--sp-12);
+  }
+}
+@media (min-width: 1280px) {
+  .auth-page__content {
+    width: 720px;
+  }
 }
 
 .auth-card {
   width: 100%;
   max-width: 400px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: var(--sp-8);
+  margin: 0 auto;
+}
+
+@media (min-width: 1024px) {
+  .auth-card {
+    margin: 0;
+  }
+}
+
+.auth-card__brand {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-10);
+  display: inline-block;
 }
 
 .auth-card__title {
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: var(--sp-1);
+  margin-bottom: var(--sp-2);
   line-height: var(--lh-heading);
 }
 
 .auth-card__sub {
-  font-size: 15px;
+  font-size: 16px;
   color: var(--text-secondary);
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-8);
   line-height: var(--lh-body);
 }
 
 .auth-card__footer {
   font-size: 14px;
   color: var(--text-muted);
-  text-align: center;
-  margin-top: var(--sp-5);
+  text-align: left;
+  margin-top: var(--sp-8);
 }
 
 .auth-card__test-accounts {

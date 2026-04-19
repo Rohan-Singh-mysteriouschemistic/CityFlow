@@ -38,9 +38,19 @@ export default function Login() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card page-enter">
-        <h1 className="auth-card__title">CityFlow</h1>
-        <p className="auth-card__sub">Sign in to continue</p>
+      <div className="auth-page__banner">
+        <div className="auth-page__banner-content">
+          <h1 className="auth-page__banner-title">Move with Purpose.</h1>
+          <p className="auth-page__banner-text">
+            Experience the city's premier mobility network. Elevating your journey, block by block.
+          </p>
+        </div>
+      </div>
+      <div className="auth-page__content">
+        <div className="auth-card page-enter">
+          <span className="auth-card__brand">CityFlow</span>
+          <h2 className="auth-card__title">Welcome back</h2>
+          <p className="auth-card__sub">Enter your details to continue your journey.</p>
 
         {error && <p className="form-error" role="alert">{error}</p>}
 
@@ -126,9 +136,10 @@ export default function Login() {
         </div>
 
         <p className="auth-card__footer">
-          No account?{' '}
-          <Link to="/register" className="auth-link">Create account</Link>
+          Don't have an account?{' '}
+          <Link to="/register" className="auth-link">Create an account</Link>
         </p>
+      </div>
       </div>
     </div>
   )
