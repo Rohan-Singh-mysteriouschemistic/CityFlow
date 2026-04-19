@@ -1,0 +1,56 @@
+/* ═══════════════════════════════════════════════════════════
+   CityFlow — Design Tokens
+   Utilitarian Civic design system
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Typography ─────────────────────────────────────────── */
+  --font-body:    'DM Sans', sans-serif;
+  --font-mono:    'DM Mono', monospace;
+
+  --lh-body:      1.6;
+  --lh-heading:   1.25;
+  --lh-table:     1.5;
+
+  /* ── Background ─────────────────────────────────────────── */
+  --bg-base:      #F4F3EF;
+  --bg-surface:   #FFFFFF;
+  --bg-subtle:    #EBEBE6;
+
+  /* ── Accent ─────────────────────────────────────────────── */
+  --accent:       #1A56DB;
+  --accent-hover: #1448C2;
+  --accent-text:  #FFFFFF;
+
+  /* ── Status ─────────────────────────────────────────────── */
+  --status-success: #16A34A;
+  --status-warn:    #D97706;
+  --status-danger:  #DC2626;
+  --status-neutral: #6B7280;
+
+  /* ── Text ───────────────────────────────────────────────── */
+  --text-primary:   #111827;
+  --text-secondary: #4B5563;
+  --text-muted:     #9CA3AF;
+
+  /* ── Border ─────────────────────────────────────────────── */
+  --border:        #D1D5DB;
+  --border-strong: #9CA3AF;
+
+  /* ── Spacing (4px base) ─────────────────────────────────── */
+  --sp-1:   4px;
+  --sp-2:   8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* ── Motion ─────────────────────────────────────────────── */
+  --ease-out:     ease-out;
+  --duration-enter: 200ms;
+  --duration-hover: 120ms;
+}

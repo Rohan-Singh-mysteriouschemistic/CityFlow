@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuth } from './context/AuthContext'
+import LoadingScreen from './components/LoadingScreen'
 
 import Login    from './pages/Login'
 import Register from './pages/Register'
@@ -11,7 +12,7 @@ import AdminDashboard  from './pages/admin/Admin_Dashboard'
 
 const ProtectedRoute = ({ children, role }) => {
   const { user, loading } = useAuth()
-  if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',color:'#8b93a8'}}>Loading...</div>
+  if (loading) return <LoadingScreen />
   if (!user) return <Navigate to="/login" replace />
   if (role && user.role !== role) return <Navigate to="/login" replace />
   return children
@@ -26,10 +27,11 @@ export default function App() {
         position="top-right"
         toastOptions={{
           style: {
-            background: '#1e2330',
-            color: '#e8eaf0',
-            border: '1px solid #2a2f3e',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border)',
             fontSize: '14px',
+            fontFamily: 'var(--font-body)',
           }
         }}
       />
@@ -61,9 +63,7 @@ export default function App() {
             : <Navigate to="/login" replace />
         }/>
 
-        <Route path="*" element={
-          <Navigate to="/" replace />
-        }/>
+        <Route path="*" element={<Navigate to="/" replace />}/>
       </Routes>
     </>
   )

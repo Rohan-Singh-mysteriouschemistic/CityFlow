@@ -20,3 +20,9 @@ Thumbs.db
 
 # VS Code
 .vscode/
+
+# Antigravity & GSD Engine Files
+.agent/
+.gemini/
+.gsd/
+.skills/

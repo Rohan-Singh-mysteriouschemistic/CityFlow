@@ -1,144 +1,89 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '../../context/AuthContext'
-import api from '../../api/axios'
-import toast from 'react-hot-toast'
+import AppShell from '../../components/AppShell'
+import StatusBadge from '../../components/StatusBadge'
+import StatCard from '../../components/StatCard'
+import DataTable from '../../components/DataTable'
 import LocationSearch from '../../components/LocationSearch'
 import MapRoute from '../../components/MapRoute'
+import api from '../../api/axios'
+import toast from 'react-hot-toast'
 import { fetchRoute, haversineDistance } from '../../utils/mapUtils'
 
-const S = {
-  shell: { display:'flex', minHeight:'100vh', background:'#0a0a0a' },
-  sidebar: {
-    width:220, background:'#111318', borderRight:'1px solid #2a2f3e',
-    display:'flex', flexDirection:'column', padding:'0'
-  },
-  logo: {
-    padding:'22px 20px', display:'flex', alignItems:'center', gap:10,
-    borderBottom:'1px solid #2a2f3e'
-  },
-  logoIcon: {
-    width:32, height:32, borderRadius:8,
-    background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
-    display:'flex', alignItems:'center', justifyContent:'center'
-  },
-  logoName: { fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:700, color:'#e8eaf0' },
-  nav: { padding:'12px 8px', flex:1 },
-  navItem: (active) => ({
-    display:'flex', alignItems:'center', gap:10, padding:'9px 12px',
-    borderRadius:8, cursor:'pointer', fontSize:13, marginBottom:2,
-    background: active ? 'rgba(79,140,255,.12)' : 'transparent',
-    color: active ? '#4f8cff' : '#8b93a8', fontWeight: active ? 500 : 400,
-    border:'none', width:'100%', textAlign:'left', transition:'.15s'
-  }),
-  main: { flex:1, display:'flex', flexDirection:'column', overflow:'auto' },
-  topbar: {
-    padding:'18px 28px', borderBottom:'1px solid #2a2f3e',
-    background:'#111318', display:'flex', alignItems:'center', justifyContent:'space-between'
-  },
-  content: { padding:'28px', flex:1 },
-  greeting: { fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:700, color:'#e8eaf0', marginBottom:4 },
-  sub: { fontSize:13, color:'#8b93a8', marginBottom:28 },
-  grid2: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:20 },
-  grid4: { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 },
-  kpi: {
-    background:'#111318', border:'1px solid #2a2f3e', borderRadius:12,
-    padding:'18px 20px', cursor:'pointer'
-  },
-  kpiLabel: { fontSize:11, color:'#8b93a8', textTransform:'uppercase', letterSpacing:'.6px', marginBottom:8 },
-  // FIX 1: was `"'Syne',sans-serif', fontSize:26` — mismatched quotes broke the entire object literal
-  kpiVal: { fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:700, lineHeight:1 },
-  card: {
-    background:'#111318', border:'1px solid #2a2f3e',
-    borderRadius:14, overflow:'hidden'
-  },
-  cardHead: {
-    padding:'16px 20px', borderBottom:'1px solid #2a2f3e',
-    display:'flex', alignItems:'center', justifyContent:'space-between'
-  },
-  cardTitle: { fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:600, color:'#e8eaf0' },
-  cardBody: { padding:'20px' },
-  btn: {
-    background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
-    border:'none', borderRadius:10, padding:'12px 20px',
-    color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', width:'100%'
-  },
-  // FIX 2: added boxSizing:'border-box' so padding doesn't cause overflow
-  input: {
-    background:'#181c24', border:'1px solid #2a2f3e', borderRadius:10,
-    padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none',
-    width:'100%', boxSizing:'border-box'
-  },
-  select: {
-    background:'#181c24', border:'1px solid #2a2f3e', borderRadius:10,
-    padding:'11px 14px', color:'#e8eaf0', fontSize:14, outline:'none',
-    width:'100%', boxSizing:'border-box'
-  },
-  label: { fontSize:12, color:'#8b93a8', marginBottom:6, display:'block' },
-  field: { marginBottom:14 },
-  pill: (c) => ({
-    display:'inline-flex', alignItems:'center', gap:4,
-    padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:600,
-    background: c==='completed'?'rgba(45,212,160,.12)':c==='in_progress'?'rgba(79,140,255,.12)':'rgba(240,96,96,.12)',
-    color: c==='completed'?'#2dd4a0':c==='in_progress'?'#4f8cff':'#f06060'
-  }),
-  rideRow: {
-    display:'flex', alignItems:'flex-start', gap:14, padding:'14px 0',
-    borderBottom:'1px solid #1e2330'
-  },
-  logoutBtn: {
-    margin:'12px 8px', padding:'9px 12px', borderRadius:8, border:'none',
-    background:'transparent', color:'#f06060', fontSize:13, cursor:'pointer',
-    textAlign:'left', width:'calc(100% - 16px)'
-  }
+const BASE_RATES = { auto: 15, sedan: 20, suv: 25, xl: 30, bike: 10 }
+const BASE_FARE  = 30
+
+function fmt(d) {
+  return d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 }
 
 export default function RiderDashboard() {
-  const { user, logout } = useAuth()
-  const [tab,        setTab]        = useState('home')
-  const [history,    setHistory]    = useState([])
-  const [profile,    setProfile]    = useState(null)
-  const [loading,    setLoading]    = useState(false)
-  const [cancelLoading, setCancelLoading] = useState(false)
-  const [form, setForm] = useState({
-    pickup_address:'', pickup_lat: null, pickup_lng: null,
-    drop_address:'',   drop_lat:  null, drop_lng:  null,
-    vehicle_type:'sedan', estimated_km:'', payment_method:''
-  })
-  // ── Zones state ──────────────────────────────────────────
-  const [zones, setZones] = useState([])
-  const [detectedSurgeZone, setDetectedSurgeZone] = useState(null)
-  
-  const [activeRide,     setActiveRide]     = useState(null)
-  const [pendingRequest, setPendingRequest] = useState(null)
-  const [showConfirm,    setShowConfirm]    = useState(false)
-  const [cancelReqLoading, setCancelReqLoading] = useState(false)
-  const [elapsed, setElapsed] = useState(0)   // seconds since request was made
-  // ── Rating panel ────────────────────────────────────────
-  const [ratingRide,    setRatingRide]    = useState(null)  // {ride_id, driver_name, ...}
-  const [ratingValue,   setRatingValue]   = useState(0)
+  const [tab, setTab] = useState('dashboard')
+
+  const [activeRide,    setActiveRide]    = useState(null)
+  const [pendingReq,    setPendingReq]    = useState(null)
+  const [history,       setHistory]       = useState([])
+  const [histLoading,   setHistLoading]   = useState(false)
+  const [zones,         setZones]         = useState([])
+  const [ratingRide,    setRatingRide]    = useState(null)
+  const [ratingVal,     setRatingVal]     = useState(0)
   const [ratingLoading, setRatingLoading] = useState(false)
-  // ── Map / Route state ───────────────────────────────────
-  const [routeData,    setRouteData]    = useState(null)   // { distance_km, duration_min, geometry }
-  const [routeLoading, setRouteLoading] = useState(false)
-  const [pickupSet,    setPickupSet]    = useState(false)  // true once user selects from geocoder
+
+  const [form, setForm] = useState({
+    pickup_address: '', pickup_lat: null, pickup_lng: null,
+    drop_address: '',   drop_lat: null,   drop_lng: null,
+    vehicle_type: 'sedan', payment_method: '', promo_code: '',
+    estimated_km: '',
+  })
+  const [pickupSet,    setPickupSet]    = useState(false)
   const [dropSet,      setDropSet]      = useState(false)
-  // ── auto-calculate distance when both pickup & drop are set ──
+  const [routeData,    setRouteData]    = useState(null)
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [booking,      setBooking]      = useState(false)
+  const [bookError,    setBookError]    = useState(null)
+  const [surgeZone,    setSurgeZone]    = useState(null)
+  const [cancelLoading, setCancelLoading] = useState(false)
+
+  // Initial load
+  useEffect(() => {
+    checkActive()
+    loadHistory()
+    api.get('/rides/zones').then(r => setZones(r.data.zones || [])).catch(() => {})
+  }, []) // eslint-disable-line
+
+  // Poll active ride every 6s
+  useEffect(() => {
+    const t = setInterval(checkActive, 6000)
+    return () => clearInterval(t)
+  }, []) // eslint-disable-line
+
+  // Poll unrated every 6s
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const r = await api.get('/rides/unrated/rider')
+        if (r.data.ride && !ratingRide) { setRatingRide(r.data.ride); setRatingVal(0) }
+      } catch {}
+    }
+    check()
+    const t = setInterval(check, 6000)
+    return () => clearInterval(t)
+  }, [ratingRide?.ride_id]) // eslint-disable-line
+
+  // Route calculation
   useEffect(() => {
     if (!pickupSet || !dropSet) return
-    const pickup = [form.pickup_lng, form.pickup_lat]
-    const drop   = [form.drop_lng,   form.drop_lat]
-    if (!pickup[0] || !pickup[1] || !drop[0] || !drop[1]) return
-
+    const p = [form.pickup_lng, form.pickup_lat]
+    const d = [form.drop_lng,   form.drop_lat]
+    if (!p[0] || !d[0]) return
     let cancelled = false
     setRouteLoading(true)
     ;(async () => {
-      const data = await fetchRoute(pickup, drop)
+      const data = await fetchRoute(p, d)
       if (cancelled) return
       if (data) {
         setRouteData(data)
         setForm(f => ({ ...f, estimated_km: String(data.distance_km) }))
       } else {
-        // Fallback: haversine
         const km = haversineDistance(form.pickup_lat, form.pickup_lng, form.drop_lat, form.drop_lng)
         setRouteData(null)
         setForm(f => ({ ...f, estimated_km: String(km) }))
@@ -146,1010 +91,333 @@ export default function RiderDashboard() {
       setRouteLoading(false)
     })()
     return () => { cancelled = true }
-  }, [pickupSet, dropSet, form.pickup_lat, form.pickup_lng, form.drop_lat, form.drop_lng]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pickupSet, dropSet, form.pickup_lat, form.pickup_lng, form.drop_lat, form.drop_lng]) // eslint-disable-line
 
-  // ── initial load ──────────────────────────────────────────
+  // Zone detection
   useEffect(() => {
-    api.get('/auth/me').then(r => setProfile(r.data.user))
-    api.get('/rides/zones').then(r => setZones(r.data.zones || []))
-    loadHistory()
-    checkActiveRide()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── real-time zone detection ─────────────────────────────
-  useEffect(() => {
-    if (form.pickup_lat && form.pickup_lng && zones.length > 0) {
-      let matchedZone = null;
-      let closestDist = Infinity;
-      for (const z of zones) {
-        const dist = haversineDistance(
-          form.pickup_lat, form.pickup_lng,
-          parseFloat(z.center_lat), parseFloat(z.center_lng)
-        );
-        if (dist <= 1.0 && dist < closestDist) {
-          closestDist = dist;
-          matchedZone = z;
-        }
-      }
-      setDetectedSurgeZone(matchedZone)
-    } else {
-      setDetectedSurgeZone(null)
+    if (!form.pickup_lat || zones.length === 0) { setSurgeZone(null); return }
+    let best = null, bestDist = Infinity
+    for (const z of zones) {
+      const dist = haversineDistance(form.pickup_lat, form.pickup_lng, parseFloat(z.center_lat), parseFloat(z.center_lng))
+      if (dist <= 1.0 && dist < bestDist) { bestDist = dist; best = z }
     }
+    setSurgeZone(best)
   }, [form.pickup_lat, form.pickup_lng, zones])
 
-  // ── poll active ride every 5 s ────────────────────────────
-  useEffect(() => {
-    const interval = setInterval(checkActiveRide, 5000)
-    return () => clearInterval(interval)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── poll for unrated completed rides every 6 s ───────────
-  // Shows the rating modal as soon as a ride is completed and unrated.
-  useEffect(() => {
-    const checkUnrated = async () => {
-      try {
-        const r = await api.get('/rides/unrated/rider')
-        if (r.data.ride && !ratingRide) {
-          setRatingRide(r.data.ride)
-          setRatingValue(0)
-        }
-      } catch {}
-    }
-    checkUnrated()
-    const t = setInterval(checkUnrated, 6000)
-    return () => clearInterval(t)
-  }, [ratingRide?.ride_id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // FIX 3: added `tab` to dep array — without it the effect captured a stale
-  // closure over `tab` and never auto-switched away from non-home tabs.
-  useEffect(() => {
-    if (activeRide && ['accepted','in_progress'].includes(activeRide.status)) {
-      if (tab === 'home') setTab('active')
-    }
-  }, [activeRide?.status, tab])
-
-  // ── elapsed timer — ticks only while pendingRequest is live ──────────────
-  useEffect(() => {
-    if (!pendingRequest) { setElapsed(0); return }
-    setElapsed(0)
-    const t = setInterval(() => setElapsed(s => s + 1), 1000)
-    return () => clearInterval(t)
-  }, [pendingRequest?.request_id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const checkActiveRide = async () => {
+  async function checkActive() {
     try {
       const r = await api.get('/rides/active/rider')
-      if (r.data.ride) {
-        setActiveRide(r.data.ride)
-        setPendingRequest(null)
-      } else if (r.data.pending_request) {
-        setPendingRequest(r.data.pending_request)
-        setActiveRide(null)
-      } else {
-        // FIX 4: moved history reload into a functional-update pattern so it
-        // doesn't depend on stale `activeRide` / `pendingRequest` closure values.
-        // Previously, the condition `if (activeRide || pendingRequest)` always
-        // read the stale state captured when the interval was created (always
-        // null/null), so history was never refreshed after a ride ended.
-        setActiveRide(prev => {
-          if (prev !== null) loadHistory()
-          return null
-        })
-        setPendingRequest(prev => {
-          if (prev !== null) loadHistory()
-          return null
-        })
+      if (r.data.ride) { setActiveRide(r.data.ride); setPendingReq(null) }
+      else if (r.data.pending_request) { setPendingReq(r.data.pending_request); setActiveRide(null) }
+      else {
+        setActiveRide(prev => { if (prev) loadHistory(); return null })
+        setPendingReq(null)
       }
     } catch {}
   }
 
-  const loadHistory = async () => {
+  async function loadHistory() {
+    setHistLoading(true)
     try {
       const r = await api.get('/rides/history/rider')
-      setHistory(r.data.rides)
-    } catch {}
+      setHistory(r.data.rides || [])
+    } catch {} finally { setHistLoading(false) }
   }
 
-  const requestRide = async (e) => {
+  async function requestRide(e) {
     e.preventDefault()
-    if (!form.pickup_address || !form.drop_address || !form.estimated_km) {
-      return toast.error('Please fill all fields')
-    }
-    if (!form.pickup_lat || !form.pickup_lng) {
-      return toast.error('Please select a pickup location from the suggestions')
-    }
-    if (!form.payment_method) {
-      return toast.error('Please select a payment method')
-    }
-    setLoading(true)
+    setBookError(null)
+    if (!form.pickup_lat) { setBookError('Select a pickup location from the suggestions.'); return }
+    if (!form.drop_lat)   { setBookError('Select a drop location from the suggestions.'); return }
+    if (!form.payment_method) { setBookError('Select a payment method.'); return }
+    setBooking(true)
     try {
-      const { data } = await api.post('/rides/request', form)
-      toast.success(data.message)
-      toast(`Estimated fare: ₹${data.estimated_fare}`, { icon: '💰' })
-      if (data.zone_detected) {
-        toast(`📍 Zone: ${data.zone_detected}${data.surge_applied ? ` — ${data.surge_multiplier.toFixed(2)}× surge applied` : ''}`, { duration: 4000 })
-      } else {
-        toast('📍 No zone surge — standard fare applied', { duration: 3000 })
-      }
-      await checkActiveRide()
-      setTab('active')
+      const { data } = await api.post('/rides/request', {
+        pickup_address: form.pickup_address, pickup_lat: form.pickup_lat, pickup_lng: form.pickup_lng,
+        dropoff_address: form.drop_address,  dropoff_lat: form.drop_lat,  dropoff_lng: form.drop_lng,
+        vehicle_type: form.vehicle_type, payment_method: form.payment_method,
+        promo_code: form.promo_code || undefined,
+        zone_id: surgeZone?.zone_id || undefined,
+        estimated_km: form.estimated_km,
+      })
+      toast.success(data.message || 'Ride requested')
+      await checkActive()
+      setTab('dashboard')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to request ride')
-    } finally {
-      setLoading(false)
-    }
+      setBookError(err.response?.data?.message || 'Could not request ride.')
+    } finally { setBooking(false) }
   }
 
-  const cancelRide = async () => {
+  async function cancelPending() {
+    if (!pendingReq?.request_id) return
+    setCancelLoading(true)
+    try {
+      await api.delete(`/rides/request/${pendingReq.request_id}/cancel`)
+      toast.success('Request cancelled')
+      setPendingReq(null)
+    } catch (err) { toast.error(err.response?.data?.message || 'Cancel failed') }
+    finally { setCancelLoading(false) }
+  }
+
+  async function cancelActive() {
     if (!activeRide?.ride_id) return
     setCancelLoading(true)
     try {
       await api.patch(`/rides/${activeRide.ride_id}/cancel`, { reason: 'Cancelled by rider' })
       toast.success('Ride cancelled')
-      setActiveRide(null)
-      setShowConfirm(false)
-      setTab('home')
-      loadHistory()
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Cancel failed')
-    } finally {
-      setCancelLoading(false)
-    }
+      setActiveRide(null); loadHistory(); setTab('dashboard')
+    } catch (err) { toast.error(err.response?.data?.message || 'Cancel failed') }
+    finally { setCancelLoading(false) }
   }
 
-  const cancelPendingRequest = async () => {
-    if (!pendingRequest?.request_id) return
-    setCancelReqLoading(true)
-    try {
-      await api.delete(`/rides/request/${pendingRequest.request_id}/cancel`)
-      toast.success('Ride request cancelled')
-      setPendingRequest(null)
-      setTab('home')
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Could not cancel request')
-    } finally {
-      setCancelReqLoading(false)
-    }
-  }
-
-  const submitRating = async () => {
-    if (!ratingRide?.ride_id || ratingValue < 1) return toast.error('Pick a star rating first')
+  async function submitRating() {
+    if (!ratingRide?.ride_id || ratingVal < 1) { toast.error('Select a star rating'); return }
     setRatingLoading(true)
     try {
-      await api.patch(`/rides/${ratingRide.ride_id}/rate`, { rating: ratingValue, feedback: '' })
-      toast.success('Rating submitted — thank you!')
-      setRatingRide(null)
-      setRatingValue(0)
-      loadHistory()
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to submit rating')
-    } finally {
-      setRatingLoading(false)
-    }
+      await api.patch(`/rides/${ratingRide.ride_id}/rate`, { rating: ratingVal, comment: '' })
+      toast.success('Rating submitted')
+      setRatingRide(null); setRatingVal(0); loadHistory()
+    } catch (err) { toast.error(err.response?.data?.message || 'Rating failed') }
+    finally { setRatingLoading(false) }
   }
 
-  const completedCnt = history.filter(r => r.status === 'completed').length
-  const hasActiveRide = !!activeRide || !!pendingRequest
+  // Estimated fare
+  const surge = surgeZone ? parseFloat(surgeZone.surge_multiplier || 1) * parseFloat(surgeZone.admin_surge_multiplier || 1) : 1
+  const km    = parseFloat(form.estimated_km) || 0
+  const rate  = BASE_RATES[form.vehicle_type] || 20
+  const estimatedFare = km > 0 ? Math.round((BASE_FARE + km * rate) * surge) : null
+
+  const completedCount = history.filter(r => r.status === 'completed').length
+  const hasActive = !!activeRide || !!pendingReq
+
+  const histColumns = [
+    { key: 'created_at', label: 'Date', render: v => fmt(v) },
+    { key: 'pickup_address', label: 'From → To', render: (_, row) => `${row.pickup_address?.split(',')[0]} → ${row.drop_address?.split(',')[0]}` },
+    { key: 'vehicle_type', label: 'Vehicle', render: v => v?.toUpperCase() },
+    { key: 'total_amount', label: 'Fare', render: v => v ? `₹${parseFloat(v).toFixed(0)}` : '—' },
+    { key: 'status', label: 'Status', render: v => <StatusBadge status={v} /> },
+  ]
 
   return (
-    <div style={S.shell}>
+    <AppShell role="rider" activeTab={tab} onTabChange={setTab}>
+      <div className="page-enter">
 
-      {/* ── POST-RIDE RATING OVERLAY ─────────────────────────────────────────── */}
-      {ratingRide && (
-        <div style={{
-          position:'fixed', inset:0, zIndex:999,
-          background:'rgba(0,0,0,.75)', backdropFilter:'blur(6px)',
-          display:'flex', alignItems:'center', justifyContent:'center', padding:20
-        }}>
-          <div style={{
-            background:'#111318', border:'1px solid #2a2f3e', borderRadius:20,
-            padding:36, maxWidth:420, width:'100%', textAlign:'center',
-            boxShadow:'0 24px 64px rgba(0,0,0,.6)'
-          }}>
-            {/* Icon */}
-            <div style={{
-              width:64, height:64, borderRadius:20, margin:'0 auto 20px',
-              background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
-              display:'flex', alignItems:'center', justifyContent:'center', fontSize:28
-            }}>🏁</div>
-
-            <div style={{fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:700, color:'#e8eaf0', marginBottom:6}}>
-              Ride Completed!
+        {/* Rate ride panel */}
+        {ratingRide && (
+          <div className="ride-panel" style={{ marginBottom: 'var(--sp-6)' }}>
+            <div className="ride-panel__head">
+              <span className="ride-panel__title">Rate your ride</span>
             </div>
-            <div style={{fontSize:13, color:'#8b93a8', marginBottom:4}}>
-              How was your trip with <strong style={{color:'#e8eaf0'}}>{ratingRide.driver_name}</strong>?
-            </div>
-            <div style={{fontSize:11, color:'#4a5270', marginBottom:24}}>
-              {ratingRide.pickup_address} → {ratingRide.drop_address}
-              {ratingRide.total_amount && (
-                <span style={{color:'#2dd4a0', fontWeight:600}}>
-                  {' · '}₹{parseFloat(ratingRide.total_amount).toFixed(0)} paid
-                </span>
-              )}
-            </div>
-
-            {/* Star selector */}
-            <div style={{display:'flex', justifyContent:'center', gap:12, marginBottom:8}}>
-              {[1,2,3,4,5].map(star => (
-                <button
-                  key={star}
-                  onClick={() => setRatingValue(star)}
-                  style={{
-                    fontSize:36, background:'none', border:'none', cursor:'pointer',
-                    transform: ratingValue >= star ? 'scale(1.2)' : 'scale(1)',
-                    transition:'transform .15s, filter .15s',
-                    filter: ratingValue >= star ? 'none' : 'grayscale(1) opacity(.35)',
-                    lineHeight:1
-                  }}
-                  title={['','Poor','Below average','Average','Good','Excellent'][star]}
-                >
-                  ⭐
-                </button>
-              ))}
-            </div>
-            <div style={{height:20, marginBottom:20, fontSize:13, color:'#f5a623', fontWeight:600}}>
-              {ratingValue === 0 && ''}
-              {ratingValue === 1 && 'Poor'}
-              {ratingValue === 2 && 'Below Average'}
-              {ratingValue === 3 && 'Average'}
-              {ratingValue === 4 && 'Good'}
-              {ratingValue === 5 && '✨ Excellent!'}
-            </div>
-
-            {/* Driver info */}
-            {ratingRide.make && (
-              <div style={{
-                fontSize:12, color:'#8b93a8', marginBottom:20,
-                padding:'10px 14px', background:'#181c24', borderRadius:10
-              }}>
-                {ratingRide.make} {ratingRide.model} · {ratingRide.color}
-                {ratingRide.driver_avg_rating &&
-                  <span style={{color:'#f5a623'}}> · ★ {parseFloat(ratingRide.driver_avg_rating).toFixed(2)} avg</span>}
+            <div className="ride-panel__body">
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 'var(--sp-3)' }}>
+                How was your trip with <strong>{ratingRide.driver_name}</strong>?
+              </p>
+              <div className="star-row">
+                {[1,2,3,4,5].map(s => (
+                  <button key={s} id={`star-${s}`}
+                    className={`star-btn${ratingVal >= s ? ' star-btn--active' : ''}`}
+                    onClick={() => setRatingVal(s)} aria-label={`${s} star`}>★</button>
+                ))}
               </div>
-            )}
-
-            {/* Submit */}
-            <button
-              onClick={submitRating}
-              disabled={ratingLoading || ratingValue < 1}
-              style={{
-                width:'100%', padding:'13px', borderRadius:12, border:'none',
-                background: ratingValue < 1
-                  ? '#2a2f3e'
-                  : 'linear-gradient(135deg,#4f8cff,#7c6aff)',
-                color: ratingValue < 1 ? '#4a5270' : '#fff',
-                fontSize:15, fontWeight:600,
-                cursor: ratingValue < 1 || ratingLoading ? 'not-allowed' : 'pointer',
-                opacity: ratingLoading ? 0.7 : 1,
-                marginBottom:10, transition:'.2s'
-              }}
-            >
-              {ratingLoading ? 'Submitting…' : '★ Submit Rating'}
-            </button>
-            <button
-              onClick={() => { setRatingRide(null); setRatingValue(0) }}
-              style={{
-                background:'none', border:'none', color:'#4a5270',
-                fontSize:12, cursor:'pointer', padding:'4px 0'
-              }}
-            >
-              Maybe later
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── SIDEBAR ── */}
-      <aside style={S.sidebar}>
-        <div style={S.logo}>
-          <div style={S.logoIcon}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <span style={S.logoName}>CityFlow</span>
-        </div>
-        <nav style={S.nav}>
-          {[
-            { id:'home',    label:'Book a Ride', icon:'🚖' },
-            { id:'active',  label:'Active Ride', icon:'📍', badge: hasActiveRide },
-            { id:'history', label:'My Rides',    icon:'🕒' },
-            { id:'profile', label:'Profile',     icon:'👤' },
-          ].map(item => (
-            <button key={item.id} style={S.navItem(tab===item.id)} onClick={() => setTab(item.id)}>
-              <span style={{fontSize:15}}>{item.icon}</span>
-              <span style={{flex:1}}>{item.label}</span>
-              {item.badge && (
-                <span style={{
-                  width:8, height:8, borderRadius:'50%',
-                  background:'#2dd4a0', boxShadow:'0 0 6px #2dd4a0',
-                  flexShrink:0
-                }}/>
-              )}
-            </button>
-          ))}
-        </nav>
-        <div style={{padding:'8px', borderTop:'1px solid #2a2f3e'}}>
-          <div style={{padding:'10px 12px', fontSize:12, color:'#4a5270'}}>
-            Signed in as
-            <div style={{color:'#8b93a8', fontWeight:500, marginTop:2}}>{user?.full_name}</div>
-          </div>
-          <button style={S.logoutBtn} onClick={logout}>← Sign out</button>
-        </div>
-      </aside>
-
-      {/* ── MAIN ── */}
-      <div style={S.main}>
-        <div style={S.topbar}>
-          <div>
-            <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
-              {tab==='home'    && 'Book a Ride'}
-              {tab==='active'  && 'Active Ride'}
-              {tab==='history' && 'My Rides'}
-              {tab==='profile' && 'My Profile'}
+              <button id="btn-submit-rating" className="btn btn-primary"
+                onClick={submitRating} disabled={ratingLoading || ratingVal < 1}>
+                {ratingLoading ? 'Submitting…' : 'Submit rating'}
+              </button>
+              <button className="btn btn-secondary" style={{ marginLeft: 'var(--sp-2)' }}
+                onClick={() => { setRatingRide(null); setRatingVal(0) }}>
+                Skip
+              </button>
             </div>
-            <div style={{fontSize:12, color:'#8b93a8'}}>Delhi · CityFlow</div>
           </div>
-          <div style={{display:'flex', alignItems:'center', gap:8}}>
-            {hasActiveRide ? (
-              <>
-                <div style={{
-                  width:8, height:8, borderRadius:'50%', background:'#4f8cff',
-                  boxShadow:'0 0 6px #4f8cff', animation:'pulse 1.5s infinite'
-                }}/>
-                <span style={{fontSize:12, color:'#4f8cff'}}>Ride Active</span>
-              </>
-            ) : (
-              <>
-                <div style={{
-                  width:8, height:8, borderRadius:'50%', background:'#2dd4a0',
-                  boxShadow:'0 0 6px #2dd4a0'
-                }}/>
-                <span style={{fontSize:12, color:'#2dd4a0'}}>Live</span>
-              </>
-            )}
-          </div>
-        </div>
+        )}
 
-        <div style={S.content}>
+        {tab === 'dashboard' && (
+          <>
+            <div className="section-header">
+              <h1 className="section-title" style={{ marginBottom: 0 }}>Book a ride</h1>
+            </div>
 
-          {/* ── HOME / BOOK TAB ── */}
-          {tab === 'home' && (
-            <>
-              <div style={S.greeting}>Hello, {user?.full_name?.split(' ')[0]} 👋</div>
-              <div style={S.sub}>Where are you going today?</div>
+            <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+              <StatCard label="Total rides" value={completedCount} />
+              <StatCard label="Active ride" value={hasActive ? 'Yes' : 'None'} />
+            </div>
 
-              {hasActiveRide && (
-                <div style={{
-                  background:'rgba(79,140,255,.08)', border:'1px solid rgba(79,140,255,.3)',
-                  borderRadius:12, padding:'16px 20px', marginBottom:24,
-                  display:'flex', alignItems:'center', justifyContent:'space-between'
-                }}>
-                  <div>
-                    <div style={{fontSize:13, fontWeight:600, color:'#4f8cff', marginBottom:4}}>
-                      You have an active ride
-                    </div>
-                    <div style={{fontSize:12, color:'#8b93a8'}}>
-                      {activeRide ? `${activeRide.pickup_address} → ${activeRide.drop_address}` : 'Waiting for a driver...'}
-                    </div>
-                    {activeRide && (
-                      <div style={{fontSize:20, fontWeight:800, color:'#4f8cff',
-                        letterSpacing:6, marginTop:6, fontFamily:"'Syne',sans-serif"}}>
-                        OTP: {activeRide.otp}
-                      </div>
-                    )}
-                  </div>
-                  <button style={{
-                    background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
-                    border:'none', borderRadius:8, padding:'8px 16px',
-                    color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0
-                  }} onClick={() => setTab('active')}>
-                    Track Ride →
-                  </button>
+            {/* Active / pending ride notice */}
+            {hasActive && (
+              <div className="ride-panel">
+                <div className="ride-panel__head">
+                  <span className="ride-panel__title">
+                    {activeRide ? `Ride #${activeRide.ride_id}` : 'Pending request'}
+                  </span>
+                  <StatusBadge status={activeRide?.status || 'pending'} />
                 </div>
-              )}
-
-              <div style={S.grid2}>
-                <div style={{...S.kpi, borderTop:'2px solid #4f8cff'}}>
-                  <div style={S.kpiLabel}>Total Rides</div>
-                  <div style={{...S.kpiVal, color:'#4f8cff'}}>{completedCnt}</div>
-                </div>
-                <div style={{...S.kpi, borderTop:'2px solid #7c6aff'}}>
-                  <div style={S.kpiLabel}>Member Since</div>
-                  <div style={{...S.kpiVal, color:'#7c6aff', fontSize:16}}>
-                    {profile ? new Date(profile.created_at).toLocaleDateString('en-IN',{month:'short',year:'numeric'}) : '—'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={S.card}>
-                <div style={S.cardHead}>
-                  <span style={S.cardTitle}>Book Your Ride</span>
-                  <span style={{fontSize:11, color:'#8b93a8'}}>Delhi NCR</span>
-                </div>
-                <div style={S.cardBody}>
-                  {hasActiveRide ? (
-                    <div style={{textAlign:'center', padding:'24px 0', color:'#8b93a8', fontSize:13}}>
-                      <div style={{fontSize:28, marginBottom:12}}>🚖</div>
-                      You already have an active ride.
-                      <br/>
-                      <button style={{...S.btn, marginTop:16, maxWidth:200}} onClick={() => setTab('active')}>
-                        View Active Ride
-                      </button>
-                    </div>
-                  ) : (
-                    <form onSubmit={requestRide}>
-                      <div style={S.field}>
-                        <LocationSearch
-                          label="Pickup Location"
-                          placeholder="e.g. Connaught Place"
-                          value={form.pickup_address}
-                          onSelect={({ address, lat, lng }) => {
-                            setForm(f => ({ ...f, pickup_address: address, pickup_lat: lat, pickup_lng: lng }))
-                            setPickupSet(true)
-                          }}
-                        />
-                      </div>
-                      <div style={S.field}>
-                        <LocationSearch
-                          label="Drop Location"
-                          placeholder="e.g. Cyber City, Gurugram"
-                          value={form.drop_address}
-                          onSelect={({ address, lat, lng }) => {
-                            setForm(f => ({ ...f, drop_address: address, drop_lat: lat, drop_lng: lng }))
-                            setDropSet(true)
-                          }}
-                        />
-                      </div>
-
-                      {/* Mini map preview — shows route once both locations are selected */}
-                      {pickupSet && dropSet && (
-                        <div style={{ marginBottom: 14 }}>
+                <div className="ride-panel__body">
+                  {activeRide && (
+                    <>
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 'var(--sp-2)' }}>
+                        {activeRide.driver_name} · {activeRide.vehicle_type?.toUpperCase()} · {activeRide.registration_no}
+                      </p>
+                      {activeRide.status === 'otp_pending' && (
+                        <div style={{ marginBottom: 'var(--sp-4)' }}>
+                          <div className="label">Your OTP — share with driver</div>
+                          <div className="otp-display">{activeRide.otp}</div>
+                        </div>
+                      )}
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 'var(--sp-4)' }}>
+                        {activeRide.pickup_address} → {activeRide.drop_address}
+                      </p>
+                      {activeRide.pickup_lat && activeRide.drop_lat && (
+                        <div style={{ marginBottom: 'var(--sp-4)' }}>
                           <MapRoute
-                            pickupCoords={[form.pickup_lng, form.pickup_lat]}
-                            dropCoords={[form.drop_lng, form.drop_lat]}
-                            height="200px"
-                            routeGeometry={routeData?.geometry || null}
+                            pickupCoords={[parseFloat(activeRide.pickup_lng), parseFloat(activeRide.pickup_lat)]}
+                            dropCoords={[parseFloat(activeRide.drop_lng), parseFloat(activeRide.drop_lat)]}
+                            height="220px"
                           />
                         </div>
                       )}
-
-                      {/* Detected Surge Zone UI */}
-                      {detectedSurgeZone && (
-                        <div style={{
-                          marginBottom:14, padding:'10px 14px',
-                          background:'rgba(245,166,35,.08)', border:'1px solid rgba(245,166,35,.3)',
-                          borderRadius:8, fontSize:12, color:'#f5a623', display:'flex', alignItems:'center', gap:8
-                        }}>
-                          <span>🏷️</span>
-                          <span>Surge Pricing Zone applied: <strong>{detectedSurgeZone.zone_name}</strong></span>
-                        </div>
-                      )}                      <div style={S.field}>
-                        <label style={S.label}>Vehicle Type</label>
-                        <select style={S.select} value={form.vehicle_type}
-                          onChange={e => setForm(f=>({...f, vehicle_type:e.target.value}))}>
-                          {['auto','sedan','suv','xl','bike'].map(t => (
-                            <option key={t} value={t}>{t.toUpperCase()}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Auto-calculated distance (read-only) */}
-                      <div style={S.field}>
-                        <label style={S.label}>Estimated Distance</label>
-                        <div style={{
-                          ...S.input, display: 'flex', alignItems: 'center',
-                          justifyContent: 'space-between',
-                          color: form.estimated_km ? '#e8eaf0' : '#4a5270',
-                          cursor: 'default'
-                        }}>
-                          {routeLoading ? (
-                            <span style={{ color: '#4f8cff', fontSize: 13 }}>Calculating route…</span>
-                          ) : form.estimated_km ? (
-                            <>
-                              <span>{form.estimated_km} km</span>
-                              {routeData?.duration_min && (
-                                <span style={{ fontSize: 11, color: '#8b93a8' }}>
-                                  ~{Math.round(routeData.duration_min)} min drive
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span>Select both locations above</span>
-                          )}
-                        </div>
-                      </div>
-                      <div style={S.field}>
-                        <label style={{...S.label, color: !form.payment_method ? '#f5a623' : '#8b93a8'}}>
-                          Payment Method {!form.payment_method && <span style={{color:'#f06060'}}>*</span>}
-                        </label>
-                        <select style={{...S.select,
-                          borderColor: !form.payment_method ? 'rgba(245,166,35,.4)' : '#2a2f3e'
-                        }}
-                          value={form.payment_method}
-                          onChange={e => setForm(f=>({...f, payment_method:e.target.value}))}>
-                          <option value="" disabled>— Select payment method —</option>
-                          <option value="upi">UPI</option>
-                          <option value="cash">Cash</option>
-                          <option value="card">Card</option>
-                          <option value="wallet">Wallet</option>
-                        </select>
-                        {!form.payment_method && (
-                          <div style={{fontSize:11, color:'#f5a623', marginTop:4}}>
-                            ⚠ Required before booking
-                          </div>
-                        )}
-                      </div>
-                      <button style={{...S.btn, opacity:loading?0.7:1}} type="submit" disabled={loading}>
-                        {loading ? 'Finding driver...' : '🚖 Request Ride'}
+                      {activeRide.status === 'pending' && (
+                        <button id="btn-cancel-ride" className="btn btn-secondary"
+                          onClick={cancelActive} disabled={cancelLoading}>
+                          {cancelLoading ? 'Cancelling…' : 'Cancel ride'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {pendingReq && !activeRide && (
+                    <>
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 'var(--sp-4)' }}>
+                        Waiting for a driver to accept your request…
+                      </p>
+                      <button id="btn-cancel-request" className="btn btn-secondary"
+                        onClick={cancelPending} disabled={cancelLoading}>
+                        {cancelLoading ? 'Cancelling…' : 'Cancel request'}
                       </button>
-                    </form>
+                    </>
                   )}
                 </div>
               </div>
-            </>
-          )}
+            )}
 
-          {/* ── ACTIVE RIDE TAB ── */}
-          {tab === 'active' && (
-            <div style={{maxWidth:500}}>
-              {activeRide ? (
-                <div style={S.card}>
-                  <div style={S.cardHead}>
-                    <span style={S.cardTitle}>Your Ride</span>
-                    <span style={S.pill(activeRide.status)}>
-                      {activeRide.status === 'accepted'    && '⏳ Driver on way'}
-                      {activeRide.status === 'otp_pending' && '🔐 Share OTP'}
-                      {activeRide.status === 'in_progress' && '🚖 In Progress'}
-                    </span>
-                  </div>
-                  <div style={S.cardBody}>
-
-                    <div style={{
-                      background:'rgba(79,140,255,.08)',
-                      border:'2px solid rgba(79,140,255,.35)',
-                      borderRadius:12, padding:'20px',
-                      marginBottom:20, textAlign:'center'
-                    }}>
-                      <div style={{
-                        fontSize:11, color:'#8b93a8', marginBottom:6,
-                        textTransform:'uppercase', letterSpacing:1
-                      }}>
-                        Your OTP — share with driver
-                      </div>
-                      <div style={{
-                        fontFamily:"'Syne',sans-serif", fontSize:48, fontWeight:900,
-                        color:'#4f8cff', letterSpacing:12, lineHeight:1
-                      }}>
-                        {activeRide.otp || '••••'}
-                      </div>
-                      <div style={{fontSize:11, color:'#4a5270', marginTop:8}}>
-                        This OTP verifies your identity to the driver
-                      </div>
-                    </div>
-
-                    {/* Route Map */}
-                    {activeRide.pickup_lat && activeRide.drop_lat && (
-                      <div style={{ marginBottom: 20 }}>
-                        <MapRoute
-                          pickupCoords={[parseFloat(activeRide.pickup_lng), parseFloat(activeRide.pickup_lat)]}
-                          dropCoords={[parseFloat(activeRide.drop_lng), parseFloat(activeRide.drop_lat)]}
-                          height="250px"
-                        />
-                      </div>
-                    )}
-
-                    {/* Detected Zone display for Active Ride */}
-                    {activeRide.zone_name && (
-                      <div style={{
-                        marginTop:'-10px', marginBottom:'20px', padding:'10px 14px',
-                        background:'rgba(245,166,35,.08)', border:'1px solid rgba(245,166,35,.3)',
-                        borderRadius:8, fontSize:12, color:'#f5a623', display:'flex', alignItems:'center', gap:8
-                      }}>
-                        <span>🏷️</span>
-                        <span>Automatically assigned to <strong>{activeRide.zone_name}</strong> surge zone</span>
-                      </div>
-                    )}
-
-                    {/* Status timeline */}
-                    <div style={{
-                      display:'flex', alignItems:'center', gap:8,
-                      marginBottom:20, padding:'12px 16px',
-                      background:'#181c24', borderRadius:10
-                    }}>
-                      {[
-                        { s:'accepted',    label:'Assigned'    },
-                        { s:'in_progress', label:'In Progress' },
-                        { s:'completed',   label:'Completed'   },
-                      ].map((step, i, arr) => {
-                        const isActive = activeRide.status === step.s
-                        const isPast = (
-                          (step.s === 'accepted'    && ['in_progress','completed'].includes(activeRide.status)) ||
-                          (step.s === 'in_progress' && activeRide.status === 'completed')
-                        )
-                        return (
-                          <div key={step.s} style={{display:'flex', alignItems:'center', flex: i < arr.length-1 ? 1 : 0}}>
-                            <div style={{
-                              width:28, height:28, borderRadius:'50%', flexShrink:0,
-                              display:'flex', alignItems:'center', justifyContent:'center',
-                              fontSize:11, fontWeight:600,
-                              background: isActive ? '#4f8cff' : isPast ? 'rgba(79,140,255,.3)' : '#2a2f3e',
-                              color: isActive || isPast ? '#fff' : '#4a5270',
-                              border: isActive ? '2px solid #4f8cff' : 'none'
-                            }}>{i+1}</div>
-                            <div style={{fontSize:10, color: isActive ? '#4f8cff' : '#8b93a8', marginLeft:4, whiteSpace:'nowrap'}}>
-                              {step.label}
-                            </div>
-                            {i < arr.length-1 && (
-                              <div style={{flex:1, height:1, background:'#2a2f3e', margin:'0 8px'}}/>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Fare */}
-                    <div style={{
-                      display:'flex', justifyContent:'space-between',
-                      background:'#181c24', borderRadius:10, padding:'14px 16px', marginBottom:16
-                    }}>
-                      <div>
-                        <div style={{fontSize:11, color:'#8b93a8'}}>Estimated Fare</div>
-                        <div style={{fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:700, color:'#2dd4a0'}}>
-                          ₹{parseFloat(activeRide.estimated_fare || 0).toFixed(0)}
-                        </div>
-                      </div>
-                      <div style={{textAlign:'right'}}>
-                        <div style={{fontSize:11, color:'#8b93a8'}}>{activeRide.zone_name}</div>
-                        {parseFloat(activeRide.surge_multiplier) > 1 && (
-                          <div style={{fontSize:11, color:'#f06060', fontWeight:600}}>
-                            ⚡ {activeRide.surge_multiplier}× surge
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Driver info */}
-                    <div style={{marginBottom:20}}>
-                      <div style={{fontSize:12, color:'#8b93a8', marginBottom:8}}>Driver Details</div>
-                      {[
-                        ['Name',    activeRide.driver_name],
-                        ['Phone',   activeRide.driver_phone],
-                        ['Vehicle', activeRide.make && `${activeRide.make} ${activeRide.model} · ${activeRide.color}`],
-                        ['Plate',   activeRide.registration_no],
-                        ['Rating',  activeRide.driver_avg_rating && `★ ${parseFloat(activeRide.driver_avg_rating).toFixed(2)}`],
-                      ].filter(([,v]) => v).map(([k,v]) => (
-                        <div key={k} style={{
-                          display:'flex', justifyContent:'space-between',
-                          padding:'7px 0', borderBottom:'1px solid #1e2330', fontSize:13
-                        }}>
-                          <span style={{color:'#8b93a8'}}>{k}</span>
-                          <span style={{color:'#e8eaf0', fontWeight:500}}>{v}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Cancel */}
-                    {activeRide.status === 'accepted' && (
-                      <>
-                        {!showConfirm ? (
-                          <button
-                            onClick={() => setShowConfirm(true)}
-                            style={{
-                              width:'100%', padding:'12px', borderRadius:10,
-                              border:'1px solid rgba(240,96,96,.4)',
-                              background:'rgba(240,96,96,.06)',
-                              color:'#f06060', fontSize:14, fontWeight:600, cursor:'pointer'
-                            }}
-                          >
-                            Cancel Ride
-                          </button>
-                        ) : (
-                          <div style={{
-                            background:'rgba(240,96,96,.08)',
-                            border:'1px solid rgba(240,96,96,.3)',
-                            borderRadius:10, padding:'16px'
-                          }}>
-                            <div style={{fontSize:13, color:'#e8eaf0', fontWeight:500, marginBottom:4}}>
-                              Cancel this ride?
-                            </div>
-                            <div style={{fontSize:12, color:'#8b93a8', marginBottom:14}}>
-                              A penalty may apply. This cannot be undone.
-                            </div>
-                            <div style={{display:'flex', gap:10}}>
-                              <button
-                                onClick={() => setShowConfirm(false)}
-                                style={{
-                                  flex:1, padding:'10px', borderRadius:8,
-                                  border:'1px solid #2a2f3e', background:'transparent',
-                                  color:'#8b93a8', fontSize:13, cursor:'pointer'
-                                }}
-                              >
-                                Keep Ride
-                              </button>
-                              <button
-                                onClick={cancelRide}
-                                disabled={cancelLoading}
-                                style={{
-                                  flex:1, padding:'10px', borderRadius:8,
-                                  border:'none', background:'#f06060',
-                                  color:'#fff', fontSize:13, fontWeight:600,
-                                  cursor: cancelLoading ? 'not-allowed' : 'pointer',
-                                  opacity: cancelLoading ? 0.7 : 1
-                                }}
-                              >
-                                {cancelLoading ? 'Cancelling…' : 'Yes, Cancel'}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {activeRide.status === 'in_progress' && (
-                      <div style={{
-                        padding:'12px 16px', borderRadius:10,
-                        background:'rgba(79,140,255,.06)', border:'1px solid rgba(79,140,255,.2)',
-                        fontSize:12, color:'#8b93a8', textAlign:'center'
-                      }}>
-                        🚖 Ride in progress — cancellation not available
-                      </div>
-                    )}
-                  </div>
+            {/* Booking form */}
+            {!hasActive && (
+              <div className="ride-panel">
+                <div className="ride-panel__head">
+                  <span className="ride-panel__title">New ride</span>
                 </div>
-              ) : pendingRequest ? (
-                /* ── RICH PENDING REQUEST CARD ── */
-                <div style={S.card}>
-                  {/* Animated header */}
-                  <div style={{
-                    padding:'20px 24px',
-                    background:'linear-gradient(135deg,rgba(79,140,255,.12),rgba(124,106,255,.08))',
-                    borderBottom:'1px solid rgba(79,140,255,.2)',
-                    display:'flex', alignItems:'center', gap:14
-                  }}>
-                    {/* Pulsing search rings */}
-                    <div style={{position:'relative', width:48, height:48, flexShrink:0}}>
-                      <div style={{
-                        position:'absolute', inset:0, borderRadius:'50%',
-                        border:'2px solid rgba(79,140,255,.6)',
-                        animation:'pingOuter 1.8s ease-out infinite'
-                      }}/>
-                      <div style={{
-                        position:'absolute', inset:6, borderRadius:'50%',
-                        border:'2px solid rgba(124,106,255,.5)',
-                        animation:'pingOuter 1.8s ease-out infinite .4s'
-                      }}/>
-                      <div style={{
-                        position:'absolute', inset:12, borderRadius:'50%',
-                        background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                        fontSize:12
-                      }}>🔍</div>
+                <div className="ride-panel__body">
+                  {bookError && <p className="form-error" role="alert">{bookError}</p>}
+                  <form onSubmit={requestRide} noValidate>
+                    <div className="form-group">
+                      <LocationSearch
+                        label="Pickup location"
+                        placeholder="e.g. Connaught Place"
+                        value={form.pickup_address}
+                        onSelect={({ address, lat, lng }) => {
+                          setForm(f => ({ ...f, pickup_address: address, pickup_lat: lat, pickup_lng: lng }))
+                          setPickupSet(true)
+                        }}
+                      />
                     </div>
-                    <div style={{flex:1}}>
-                      <div style={{fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:700, color:'#e8eaf0'}}>
-                        Searching for a driver…
-                      </div>
-                      <div style={{fontSize:12, color:'#8b93a8', marginTop:2}}>
-                        Matching you with the best available driver nearby
-                      </div>
+                    <div className="form-group">
+                      <LocationSearch
+                        label="Drop location"
+                        placeholder="e.g. Cyber City, Gurugram"
+                        value={form.drop_address}
+                        onSelect={({ address, lat, lng }) => {
+                          setForm(f => ({ ...f, drop_address: address, drop_lat: lat, drop_lng: lng }))
+                          setDropSet(true)
+                        }}
+                      />
                     </div>
-                    {/* Live elapsed time */}
-                    <div style={{textAlign:'right', flexShrink:0}}>
-                      <div style={{fontSize:11, color:'#8b93a8', marginBottom:2}}>Waiting</div>
-                      <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:700, color:'#4f8cff'}}>
-                        {String(Math.floor(elapsed/60)).padStart(2,'0')}:{String(elapsed%60).padStart(2,'0')}
-                      </div>
-                    </div>
-                  </div>
 
-                  <div style={{padding:'20px 24px'}}>
-                    {/* Route Map for pending request */}
-                    {pendingRequest.pickup_lat && pendingRequest.drop_lat && (
-                      <div style={{ marginBottom: 16 }}>
+                    {pickupSet && dropSet && (
+                      <div className="form-group">
                         <MapRoute
-                          pickupCoords={[parseFloat(pendingRequest.pickup_lng), parseFloat(pendingRequest.pickup_lat)]}
-                          dropCoords={[parseFloat(pendingRequest.drop_lng), parseFloat(pendingRequest.drop_lat)]}
-                          height="180px"
+                          pickupCoords={[form.pickup_lng, form.pickup_lat]}
+                          dropCoords={[form.drop_lng, form.drop_lat]}
+                          height="200px"
+                          routeGeometry={routeData?.geometry || null}
                         />
                       </div>
                     )}
 
-                    {/* Detected Zone display for Pending Request */}
-                    {pendingRequest.zone_name && (
-                      <div style={{
-                        marginTop:'-6px', marginBottom:'16px', padding:'10px 14px',
-                        background:'rgba(245,166,35,.08)', border:'1px solid rgba(245,166,35,.3)',
-                        borderRadius:8, fontSize:12, color:'#f5a623', display:'flex', alignItems:'center', gap:8
-                      }}>
-                        <span>🏷️</span>
-                        <span>Automatically assigned to <strong>{pendingRequest.zone_name}</strong> surge zone</span>
-                      </div>
+                    {surgeZone && (
+                      <p style={{ fontSize: 12, color: 'var(--status-warn)', marginBottom: 'var(--sp-3)' }}>
+                        Surge zone: {surgeZone.zone_name}
+                      </p>
                     )}
 
-                    {/* Route */}
-                    <div style={{
-                      background:'#181c24', borderRadius:12, padding:'16px',
-                      marginBottom:16, position:'relative'
-                    }}>
-                      <div style={{display:'flex', alignItems:'flex-start', gap:12}}>
-                        <div style={{display:'flex', flexDirection:'column', alignItems:'center', paddingTop:3}}>
-                          <div style={{width:10, height:10, borderRadius:'50%', background:'#4f8cff', border:'2px solid #4f8cff'}}/>
-                          <div style={{width:2, height:28, background:'linear-gradient(to bottom,#4f8cff,#7c6aff)', margin:'3px 0'}}/>
-                          <div style={{width:10, height:10, borderRadius:'50%', background:'#7c6aff', border:'2px solid #7c6aff'}}/>
-                        </div>
-                        <div style={{flex:1}}>
-                          <div style={{marginBottom:12}}>
-                            <div style={{fontSize:10, color:'#4a5270', letterSpacing:'.5px', marginBottom:2}}>PICKUP</div>
-                            <div style={{fontSize:13, fontWeight:500, color:'#e8eaf0'}}>{pendingRequest.pickup_address}</div>
-                          </div>
-                          <div>
-                            <div style={{fontSize:10, color:'#4a5270', letterSpacing:'.5px', marginBottom:2}}>DROP</div>
-                            <div style={{fontSize:13, fontWeight:500, color:'#e8eaf0'}}>{pendingRequest.drop_address}</div>
-                          </div>
-                        </div>
+                    <div className="form-group">
+                      <div className="label">Distance</div>
+                      <div style={{ fontSize: 14, color: 'var(--text-secondary)', padding: 'var(--sp-3) 0' }}>
+                        {routeLoading ? 'Calculating…' : form.estimated_km ? `${form.estimated_km} km${routeData?.duration_min ? ` · ~${Math.round(routeData.duration_min)} min` : ''}` : 'Select both locations above'}
                       </div>
                     </div>
 
-                    {/* Fare / Distance / Vehicle row */}
-                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:18}}>
-                      {[
-                        { label:'Est. Fare',    val:`₹${parseFloat(pendingRequest.estimated_fare||0).toFixed(0)}`,  color:'#2dd4a0' },
-                        { label:'Distance',     val:`${pendingRequest.estimated_km} km`,                             color:'#4f8cff' },
-                        { label:'Vehicle',      val:(pendingRequest.vehicle_type||'sedan').toUpperCase(),            color:'#f5a623' },
-                      ].map(({label,val,color}) => (
-                        <div key={label} style={{
-                          background:'#181c24', borderRadius:10, padding:'12px',
-                          textAlign:'center', border:'1px solid #2a2f3e'
-                        }}>
-                          <div style={{fontSize:10, color:'#8b93a8', marginBottom:4}}>{label}</div>
-                          <div style={{fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:700, color}}>{val}</div>
-                        </div>
-                      ))}
+                    <div className="form-group">
+                      <label className="label">Vehicle type</label>
+                      <div className="radio-group">
+                        {Object.entries(BASE_RATES).map(([t, r]) => (
+                          <label key={t} className="radio-label">
+                            <input type="radio" name="vehicle_type" value={t}
+                              checked={form.vehicle_type === t}
+                              onChange={() => setForm(f => ({ ...f, vehicle_type: t }))} />
+                            {t.charAt(0).toUpperCase() + t.slice(1)} · ₹{r}/km
+                          </label>
+                        ))}
+                      </div>
                     </div>
 
-                    {/* Status dots — animated */}
-                    <div style={{
-                      display:'flex', alignItems:'center', gap:6, marginBottom:20,
-                      padding:'10px 14px', background:'#181c24', borderRadius:10
-                    }}>
-                      {[0,1,2].map(i => (
-                        <div key={i} style={{
-                          width:8, height:8, borderRadius:'50%',
-                          background:'#4f8cff',
-                          animation:`dotBounce 1.2s ease-in-out infinite`,
-                          animationDelay:`${i*0.2}s`
-                        }}/>
-                      ))}
-                      <span style={{fontSize:12, color:'#8b93a8', marginLeft:8}}>
-                        Checking every 5 seconds for available drivers…
-                      </span>
+                    <div className="form-group">
+                      <label className="label">Payment method</label>
+                      <div className="radio-group">
+                        {['Cash', 'Card', 'Wallet', 'UPI'].map(m => (
+                          <label key={m} className="radio-label">
+                            <input type="radio" name="payment_method" value={m.toLowerCase()}
+                              checked={form.payment_method === m.toLowerCase()}
+                              onChange={() => setForm(f => ({ ...f, payment_method: m.toLowerCase() }))} />
+                            {m}
+                          </label>
+                        ))}
+                      </div>
                     </div>
 
-                    {/* Cancel request button */}
-                    <button
-                      onClick={cancelPendingRequest}
-                      disabled={cancelReqLoading}
-                      style={{
-                        width:'100%', padding:'12px', borderRadius:10,
-                        border:'1px solid rgba(240,96,96,.4)',
-                        background:'rgba(240,96,96,.06)',
-                        color:'#f06060', fontSize:14, fontWeight:600,
-                        cursor: cancelReqLoading ? 'not-allowed' : 'pointer',
-                        opacity: cancelReqLoading ? 0.6 : 1,
-                        transition:'.15s'
-                      }}
-                    >
-                      {cancelReqLoading ? 'Cancelling…' : '✕ Cancel Request'}
+                    <div className="form-group">
+                      <label className="label" htmlFor="promo-code">Promo code (optional)</label>
+                      <input id="promo-code" className="input" type="text" placeholder="Enter promo code"
+                        value={form.promo_code} onChange={e => setForm(f => ({ ...f, promo_code: e.target.value }))} />
+                    </div>
+
+                    {estimatedFare && (
+                      <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 'var(--sp-4)' }}>
+                        Estimated fare: <span className="mono" style={{ fontWeight: 500 }}>₹{estimatedFare}</span>
+                        {surge > 1 && <span style={{ fontSize: 12, color: 'var(--status-warn)' }}> ({surge.toFixed(2)}× surge)</span>}
+                      </p>
+                    )}
+
+                    <button id="btn-request-ride" className="btn btn-primary btn-full" type="submit"
+                      disabled={booking} style={{ opacity: booking ? 0.7 : 1 }}>
+                      {booking ? 'Requesting…' : 'Request ride'}
                     </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{...S.card, padding:48, textAlign:'center'}}>
-                  <div style={{fontSize:40, marginBottom:16}}>🤔</div>
-                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:600, color:'#e8eaf0', marginBottom:8}}>
-                    No active ride
-                  </div>
-                  <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>
-                    Book a ride to get started.
-                  </div>
-                  <button style={{...S.btn, maxWidth:200, margin:'0 auto'}}
-                    onClick={() => setTab('home')}>
-                    Book a Ride
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── HISTORY TAB ── */}
-          {tab === 'history' && (
-            <div style={S.card}>
-              <div style={S.cardHead}>
-                <span style={S.cardTitle}>My Rides</span>
-                <span style={{fontSize:12, color:'#8b93a8'}}>{history.length} rides</span>
-              </div>
-              <div style={S.cardBody}>
-                {history.length === 0 ? (
-                  <div style={{textAlign:'center', padding:32, color:'#8b93a8'}}>No rides yet</div>
-                ) : history.map(r => (
-                  <div key={r.ride_id} style={S.rideRow}>
-                    <div style={{
-                      width:36, height:36, borderRadius:10, flexShrink:0,
-                      background:'rgba(79,140,255,.1)',
-                      display:'flex', alignItems:'center', justifyContent:'center', fontSize:16
-                    }}>🚖</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13, fontWeight:500, color:'#e8eaf0', marginBottom:2}}>
-                        {r.pickup_address} → {r.drop_address}
-                      </div>
-                      <div style={{fontSize:11, color:'#8b93a8'}}>
-                        {r.driver_name} · {r.vehicle_type?.toUpperCase()} · {r.make} {r.model}
-                      </div>
-                      <div style={{fontSize:11, color:'#4a5270', marginTop:2}}>
-                        {r.start_time ? new Date(r.start_time).toLocaleDateString('en-IN', {
-                          day:'numeric', month:'short', year:'numeric',
-                          hour:'2-digit', minute:'2-digit'
-                        }) : '—'}
-                      </div>
-                    </div>
-                    <div style={{textAlign:'right'}}>
-                      <div style={{fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:700, color:'#e8eaf0', marginBottom:4}}>
-                        {r.total_amount ? `₹${parseFloat(r.total_amount).toFixed(0)}` : '—'}
-                      </div>
-                      <span style={S.pill(r.status)}>{r.status?.replace('_',' ')}</span>
-                      {r.rider_rating && (
-                        <div style={{fontSize:11, color:'#f5a623', marginTop:4}}>★ {r.rider_rating}</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── PROFILE TAB ── */}
-          {tab === 'profile' && profile && (
-            <div style={{maxWidth:480}}>
-              <div style={S.card}>
-                <div style={S.cardHead}>
-                  <span style={S.cardTitle}>My Profile</span>
-                </div>
-                <div style={S.cardBody}>
-                  <div style={{
-                    width:64, height:64, borderRadius:16, marginBottom:16,
-                    background:'linear-gradient(135deg,#4f8cff,#7c6aff)',
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:700, color:'white'
-                  }}>
-                    {profile.full_name?.split(' ').map(n=>n[0]).join('').slice(0,2)}
-                  </div>
-                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:700, color:'#e8eaf0', marginBottom:4}}>
-                    {profile.full_name}
-                  </div>
-                  <div style={{fontSize:13, color:'#8b93a8', marginBottom:20}}>Rider · Delhi NCR</div>
-                  {[
-                    ['Email',        profile.email],
-                    ['Phone',        profile.phone],
-                    ['Total Rides',  profile.total_rides || 0],
-                    ['Member Since', new Date(profile.created_at).toLocaleDateString('en-IN',{month:'long',year:'numeric'})],
-                  ].map(([k,v]) => (
-                    <div key={k} style={{
-                      display:'flex', justifyContent:'space-between',
-                      padding:'10px 0', borderBottom:'1px solid #1e2330', fontSize:13
-                    }}>
-                      <span style={{color:'#8b93a8'}}>{k}</span>
-                      <span style={{color:'#e8eaf0', fontWeight:500}}>{v}</span>
-                    </div>
-                  ))}
+                  </form>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </>
+        )}
 
-        </div>
+        {tab === 'history' && (
+          <>
+            <h1 className="section-title">Ride history</h1>
+            <DataTable
+              columns={histColumns}
+              rows={history.slice(0, 20)}
+              loading={histLoading}
+              emptyMessage="No rides yet."
+            />
+          </>
+        )}
       </div>
-    </div>
+    </AppShell>
   )
 }
