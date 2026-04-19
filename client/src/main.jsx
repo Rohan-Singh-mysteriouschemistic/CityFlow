@@ -3,7 +3,9 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import App from './App.jsx'
-import './styles/global.css'
+import './styles/tokens.css'
+import './styles/base.css'
+import './styles/components.css'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
