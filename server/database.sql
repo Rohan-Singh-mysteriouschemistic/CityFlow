@@ -3,7 +3,7 @@
 -- ─────────────────────────────────────────────
 
 CREATE DATABASE cityflow_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE cityflow_db;
+USE defaultdb;
 
 CREATE TABLE users (
     user_id             INT AUTO_INCREMENT PRIMARY KEY,
@@ -340,7 +340,7 @@ DELIMITER ;
 -- SECTION 4: SEED DATA
 -- ─────────────────────────────────────────────
 
-USE cityflow_db;
+USE defaultdb;
 
 -- STEP 1: ZONES
 INSERT IGNORE INTO zones
@@ -529,7 +529,7 @@ UPDATE driver_profiles SET total_rides = 2, total_earned = 327.60, is_available 
 
 -- Migration Script
 
-USE cityflow_db;
+USE defaultdb;
 SET @col_exists = (
   SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE()
