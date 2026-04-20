@@ -35,8 +35,8 @@ export default function Login() {
 
 
   return (
-    <div style={styles.page}>
-      <div style={styles.left}>
+    <div style={styles.page} className="mob-login-page">
+      <div style={styles.left} className="mob-login-left">
         <div style={styles.brand}>
           <div style={styles.logo}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -47,10 +47,10 @@ export default function Login() {
           <span style={styles.brandName}>CityFlow</span>
         </div>
         <div style={styles.heroText}>
-          <h1 style={styles.heroH1}>Delhi's smartest<br/>ride platform.</h1>
+          <h1 style={styles.heroH1} className="mob-login-h1">Delhi's smartest<br/>ride platform.</h1>
           <p style={styles.heroP}>Fast, reliable, affordable rides across all 15 zones of the capital.</p>
         </div>
-        <div style={styles.stats}>
+        <div style={styles.stats} className="mob-login-stats">
           {[['15', 'Delhi Zones'], ['3', 'User Roles'], ['100%', 'Scalability Potential']].map(([val, label]) => (
             <div key={label} style={styles.stat}>
               <span style={styles.statVal}>{val}</span>
@@ -60,8 +60,8 @@ export default function Login() {
         </div>
       </div>
 
-      <div style={styles.right}>
-        <div style={styles.card}>
+      <div style={styles.right} className="mob-login-right">
+        <div style={styles.card} className="mob-register-card">
           <h2 style={styles.cardTitle}>Sign in</h2>
           <p style={styles.cardSub}>Enter your credentials to continue</p>
 

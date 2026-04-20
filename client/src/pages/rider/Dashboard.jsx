@@ -95,6 +95,7 @@ const S = {
 
 export default function RiderDashboard() {
   const { user, logout } = useAuth()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tab,        setTab]        = useState('home')
   const [history,    setHistory]    = useState([])
   const [profile,    setProfile]    = useState(null)
@@ -362,7 +363,7 @@ export default function RiderDashboard() {
   const hasActiveRide = !!activeRide || !!pendingRequest
 
   return (
-    <div style={S.shell}>
+    <div style={S.shell} className="mob-shell">
 
       {/* ── POST-RIDE RATING OVERLAY ─────────────────────────────────────────── */}
       {ratingRide && (
@@ -470,7 +471,8 @@ export default function RiderDashboard() {
       )}
 
       {/* ── SIDEBAR ── */}
-      <aside style={S.sidebar}>
+      <div className={`mob-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <aside style={S.sidebar} className={`mob-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div style={S.logo}>
           <div style={S.logoIcon}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -510,16 +512,19 @@ export default function RiderDashboard() {
       </aside>
 
       {/* ── MAIN ── */}
-      <div style={S.main}>
-        <div style={S.topbar}>
-          <div>
-            <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
+      <div style={S.main} className="mob-main">
+        <div style={S.topbar} className="mob-topbar">
+          <div className="mob-topbar-left">
+            <button className="hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
+            <div>
+              <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
               {tab==='home'    && 'Book a Ride'}
               {tab==='active'  && 'Active Ride'}
               {tab==='history' && 'My Rides'}
               {tab==='profile' && 'My Profile'}
             </div>
             <div style={{fontSize:12, color:'#8b93a8'}}>Delhi · CityFlow</div>
+            </div>
           </div>
           <div style={{display:'flex', alignItems:'center', gap:8}}>
             {hasActiveRide ? (
@@ -542,7 +547,7 @@ export default function RiderDashboard() {
           </div>
         </div>
 
-        <div style={S.content}>
+        <div style={S.content} className="mob-content">
 
           {/* ── HOME / BOOK TAB ── */}
           {tab === 'home' && (
@@ -580,7 +585,7 @@ export default function RiderDashboard() {
                 </div>
               )}
 
-              <div style={S.grid2}>
+              <div style={S.grid2} className="mob-grid2">
                 <div style={{...S.kpi, borderTop:'2px solid #4f8cff'}}>
                   <div style={S.kpiLabel}>Total Rides</div>
                   <div style={{...S.kpiVal, color:'#4f8cff'}}>{completedCnt}</div>

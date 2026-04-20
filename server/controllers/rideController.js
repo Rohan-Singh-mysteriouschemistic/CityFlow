@@ -362,11 +362,10 @@ const acceptRequest = async (req, res, next) => {
       logger.error('Socket emission failed on acceptRequest', { message: wsErr.message });
     }
 
-    // Return OTP so driver sees it immediately after accepting
+    // Do not return OTP, the driver must get it from the rider verbally.
     res.status(201).json({
       message:  'Ride accepted!',
       ride_id,
-      otp,
       request_id
     });
 

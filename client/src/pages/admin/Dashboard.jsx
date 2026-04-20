@@ -97,6 +97,7 @@ const S = {
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tab,      setTab]     = useState('overview')
   const [stats,    setStats]   = useState(null)
   const [rides,    setRides]   = useState([])
@@ -184,8 +185,9 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={S.shell}>
-      <aside style={S.sidebar}>
+    <div style={S.shell} className="mob-shell">
+      <div className={`mob-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <aside style={S.sidebar} className={`mob-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div style={S.logo}>
           <div style={S.logoIcon}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -219,10 +221,12 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
-      <div style={S.main}>
-        <div style={S.topbar}>
-          <div>
-            <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
+      <div style={S.main} className="mob-main">
+        <div style={S.topbar} className="mob-topbar">
+          <div className="mob-topbar-left">
+            <button className="hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
+            <div>
+              <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
               {tab==='overview'&&'Platform Overview'}
               {tab==='rides'   &&'All Rides'}
               {tab==='drivers' &&'Driver Management'}
@@ -231,6 +235,7 @@ export default function AdminDashboard() {
               {tab==='revenue' &&'Revenue Analytics'}
             </div>
             <div style={{fontSize:12, color:'#8b93a8'}}>CityFlow Admin · Delhi</div>
+            </div>
           </div>
           <button onClick={loadAll} style={{
             background:'#181c24', border:'1px solid #2a2f3e', borderRadius:8,
@@ -238,12 +243,12 @@ export default function AdminDashboard() {
           }}>↻ Refresh</button>
         </div>
 
-        <div style={S.content}>
+        <div style={S.content} className="mob-content">
 
           {/* ── OVERVIEW ── */}
           {tab === 'overview' && stats && (
             <>
-              <div style={S.grid5}>
+              <div style={S.grid5} className="mob-grid5">
                 {[
                   { label:'Total Rides',   val: stats.total_rides,       color:'#4f8cff' },
                   { label:'Active Now',    val: stats.active_rides,      color:'#2dd4a0' },
@@ -257,7 +262,7 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
-              <div style={S.grid4}>
+              <div style={S.grid4} className="mob-grid4">
                 {[
                   { label:"Today's Rides",   val: stats.today_rides,       color:'#4f8cff' },
                   { label:"Today's Revenue", val:`₹${parseFloat(stats.today_revenue).toFixed(0)}`, color:'#2dd4a0' },
@@ -278,8 +283,8 @@ export default function AdminDashboard() {
                     View all →
                   </button>
                 </div>
-                <div style={{padding:'0 20px'}}>
-                  <table style={{width:'100%', borderCollapse:'collapse'}}>
+                <div style={{padding:'0 20px', overflowX:'auto'}}>
+                  <table style={{width:'100%', borderCollapse:'collapse', minWidth:800}}>
                     <thead>
                       <tr>
                         {['ID','Rider','Driver','Route','Fare','Status','Zone'].map(h=>(
@@ -580,7 +585,7 @@ export default function AdminDashboard() {
           {/* ── REVENUE ── */}
           {tab === 'revenue' && (
             <>
-              <div style={S.grid4}>
+              <div style={S.grid4} className="mob-grid4">
                 {[
                   { label:'Total Revenue', val:`₹${revenue.reduce((s,r)=>s+parseFloat(r.total_revenue||0),0).toFixed(0)}`, color:'#2dd4a0' },
                   { label:'Total Rides',   val: revenue.reduce((s,r)=>s+parseInt(r.total_rides||0),0),                     color:'#4f8cff' },

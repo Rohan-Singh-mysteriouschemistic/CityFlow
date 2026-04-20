@@ -70,3 +70,99 @@ input, select, textarea { font-family: var(--font); }
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
 }
+
+/* ── Mobile Responsive Overrides ───────────────────── */
+
+.hamburger {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--txt);
+  font-size: 24px;
+  cursor: pointer;
+  margin-right: 12px;
+  padding: 4px;
+}
+.mob-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mob-shell {
+    flex-direction: column !important;
+  }
+  
+  .mob-sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: -260px !important;
+    bottom: 0 !important;
+    z-index: 1000 !important;
+    width: 250px !important;
+    transition: left 0.3s ease !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+  }
+  .mob-sidebar.open {
+    left: 0 !important;
+  }
+
+  .mob-overlay.open {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(2px);
+    z-index: 999;
+  }
+  
+  .mob-main {
+    width: 100% !important;
+  }
+
+  .hamburger {
+    display: block !important;
+  }
+  
+  .mob-topbar-left {
+    display: flex !important;
+    align-items: center !important;
+  }
+  
+  .mob-grid2, .mob-grid4, .mob-grid5 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .mob-content {
+    padding: 16px !important;
+  }
+  .mob-topbar {
+    padding: 12px 16px !important;
+  }
+
+  /* Login / Register overrides */
+  .mob-login-page {
+    flex-direction: column !important;
+  }
+  .mob-login-left {
+    padding: 32px 24px !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    flex: none !important;
+  }
+  .mob-login-right {
+    width: 100% !important;
+    padding: 32px 24px !important;
+  }
+  .mob-login-h1 {
+    font-size: 36px !important;
+  }
+  .mob-login-stats {
+    flex-wrap: wrap !important;
+    gap: 20px !important;
+    margin-top: 24px;
+  }
+  .mob-register-card {
+    padding: 24px 20px !important;
+    border-radius: 12px !important;
+  }
+}

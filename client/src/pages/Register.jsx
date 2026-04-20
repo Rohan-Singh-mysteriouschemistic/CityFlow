@@ -35,8 +35,8 @@ export default function Register() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
+    <div style={styles.page} className="mob-login-page">
+      <div style={styles.card} className="mob-register-card">
         <div style={styles.header}>
           <div style={styles.logo}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">

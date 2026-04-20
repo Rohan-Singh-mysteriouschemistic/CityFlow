@@ -96,6 +96,7 @@ const S = {
 
 export default function DriverDashboard() {
   const { user, logout } = useAuth()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tab,        setTab]        = useState('home')
   const [profile,    setProfile]    = useState(null)
   const [history,    setHistory]    = useState([])
@@ -234,8 +235,8 @@ export default function DriverDashboard() {
     }
     setAccepting(request_id)
     try {
-      const { data } = await api.post(`/rides/accept/${request_id}`)
-      toast.success(`Ride accepted! OTP: ${data.otp}`)
+      await api.post(`/rides/accept/${request_id}`)
+      toast.success(`Ride accepted!`)
       await checkActiveRide()
       setTab('active')
       loadRequests()
@@ -348,9 +349,10 @@ export default function DriverDashboard() {
   ]
 
   return (
-    <div style={S.shell}>
+    <div style={S.shell} className="mob-shell">
       {/* ── SIDEBAR ── */}
-      <aside style={S.sidebar}>
+      <div className={`mob-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <aside style={S.sidebar} className={`mob-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div style={S.logo}>
           <div style={S.logoIcon}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -424,11 +426,13 @@ export default function DriverDashboard() {
       </aside>
 
       {/* ── MAIN ── */}
-      <div style={S.main}>
+      <div style={S.main} className="mob-main">
         {/* topbar */}
-        <div style={S.topbar}>
-          <div>
-            <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
+        <div style={S.topbar} className="mob-topbar">
+          <div className="mob-topbar-left">
+            <button className="hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
+            <div>
+              <div style={{fontSize:15, fontWeight:600, color:'#e8eaf0'}}>
               {tab==='home'     && 'Driver Dashboard'}
               {tab==='requests' && 'Ride Requests'}
               {tab==='active'   && 'Active Ride'}
@@ -437,6 +441,7 @@ export default function DriverDashboard() {
             </div>
             <div style={{fontSize:12, color:'#8b93a8'}}>
               {currentZoneName ? `${currentZoneName} · CityFlow Driver` : 'Delhi · CityFlow Driver'}
+            </div>
             </div>
           </div>
           <div style={{display:'flex', alignItems:'center', gap:12}}>
@@ -481,7 +486,7 @@ export default function DriverDashboard() {
           </div>
         )}
 
-        <div style={S.content}>
+        <div style={S.content} className="mob-content">
 
           {/* ── HOME TAB ── */}
           {tab === 'home' && (
@@ -520,7 +525,7 @@ export default function DriverDashboard() {
                 </div>
               ))}
 
-              <div style={S.grid4}>
+              <div style={S.grid4} className="mob-grid4">
                 <div style={{...S.kpi, borderTop:'2px solid #2dd4a0'}}>
                   <div style={S.kpiLabel}>Total Earned</div>
                   <div style={{...S.kpiVal, color:'#2dd4a0'}}>₹{totalEarned.toFixed(0)}</div>
@@ -541,7 +546,7 @@ export default function DriverDashboard() {
                 </div>
               </div>
 
-              <div style={S.grid2}>
+              <div style={S.grid2} className="mob-grid2">
                 {/* Availability + Zone card */}
                 <div style={S.card}>
                   <div style={S.cardHead}><span style={S.cardTitle}>Status & Zone</span></div>
@@ -804,21 +809,7 @@ export default function DriverDashboard() {
                   </div>
                   <div style={S.cardBody}>
 
-                    {/* OTP display */}
-                    <div style={{
-                      background:'rgba(45,212,160,.06)', border:'1px solid rgba(45,212,160,.2)',
-                      borderRadius:12, padding:'16px', marginBottom:20, textAlign:'center'
-                    }}>
-                      <div style={{fontSize:11, color:'#8b93a8', marginBottom:6, textTransform:'uppercase', letterSpacing:1}}>
-                        Rider OTP — verify before starting
-                      </div>
-                      <div style={{
-                        fontFamily:"'Syne',sans-serif", fontSize:36, fontWeight:800,
-                        color:'#2dd4a0', letterSpacing:10
-                      }}>
-                        {ride.otp || '••••'}
-                      </div>
-                    </div>
+
 
                     {/* Route Map */}
                     {ride.pickup_lat && ride.drop_lat && (
