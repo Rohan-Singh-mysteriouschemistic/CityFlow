@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CityFlow - Authentication</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;500;600;700;800;900&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-dim": "#0e0e10",
+                      "on-error": "#490006",
+                      "on-primary": "#002c68",
+                      "outline-variant": "#48474a",
+                      "on-tertiary": "#005a41",
+                      "on-tertiary-container": "#005039",
+                      "surface-container-high": "#1f1f22",
+                      "on-primary-fixed": "#000000",
+                      "on-primary-container": "#002051",
+                      "on-surface": "#f9f5f8",
+                      "on-secondary-container": "#d1caff",
+                      "on-secondary-fixed": "#2d00aa",
+                      "secondary-fixed-dim": "#c4bcff",
+                      "inverse-on-surface": "#565457",
+                      "secondary-fixed": "#d2ccff",
+                      "tertiary-fixed": "#4ae8b2",
+                      "on-tertiary-fixed": "#003a29",
+                      "tertiary-container": "#4ae8b2",
+                      "on-secondary-fixed-variant": "#4b32cc",
+                      "background": "#0e0e10",
+                      "surface-container-highest": "#262528",
+                      "primary-fixed-dim": "#5790ff",
+                      "error": "#ff716c",
+                      "surface-container-low": "#131315",
+                      "primary": "#88adff",
+                      "surface-tint": "#88adff",
+                      "on-background": "#f9f5f8",
+                      "secondary": "#9b90ff",
+                      "surface-bright": "#2c2c2f",
+                      "on-surface-variant": "#adaaad",
+                      "primary-container": "#709fff",
+                      "inverse-surface": "#fcf8fb",
+                      "primary-fixed": "#709fff",
+                      "on-primary-fixed-variant": "#002964",
+                      "on-error-container": "#ffa8a3",
+                      "error-dim": "#d7383b",
+                      "tertiary": "#5cf6c0",
+                      "surface-container": "#19191c",
+                      "surface": "#0e0e10",
+                      "inverse-primary": "#005ac8",
+                      "primary-dim": "#6c9cff",
+                      "on-tertiary-fixed-variant": "#005a41",
+                      "surface-container-lowest": "#000000",
+                      "on-secondary": "#1b0072",
+                      "tertiary-fixed-dim": "#36d9a5",
+                      "tertiary-dim": "#36d9a5",
+                      "surface-variant": "#262528",
+                      "outline": "#767577",
+                      "secondary-dim": "#705df2",
+                      "secondary-container": "#4024c2",
+                      "error-container": "#9f0519"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "1rem",
+                      "xl": "1.5rem",
+                      "full": "9999px"
+              },
+              "spacing": {},
+              "fontFamily": {
+                      "headline": [
+                              "Epilogue"
+                      ],
+                      "body": [
+                              "Inter"
+                      ],
+                      "label": [
+                              "Inter"
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+</head>
+<body class="bg-background text-on-background font-body min-h-screen flex selection:bg-primary selection:text-on-primary">
+<div class="flex-1 hidden lg:block relative overflow-hidden bg-surface-container-low">
+<div class="absolute inset-0 bg-gradient-to-br from-primary-container/20 via-background to-secondary-container/20"></div>
+<img alt="Flow Background" class="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-screen" data-alt="abstract flowing 3d liquid mesh in deep blues and purples, dark cinematic lighting, smooth continuous texture, premium digital art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfnP0koFYARQV7Ry9Te_FHB9Aw_YHBsE6-31jYDE6VPaPAJzRqh23rmnlToC6fDUagmb6G-DSp6_Ckqd9JITMK4AX1_tGMIUeYTglt9mE0XP2wkC5we7O0Z72H9NJQtmbiUPVUDIN42VEqFNbBcej_opqyt8w9uP1ZfsyrPNWRGWiYdKGDxnveHYku1DTHN3TyD06lWT06JUu_VqbAiYM2iAFwoRKqJS2BUdCVjicJtOVefh8UOGDG4n4Qi7iBK5pVFv_qlBgwyZ2t"/>
+<div class="absolute inset-0 bg-background/40 backdrop-blur-[2px]"></div>
+<div class="absolute bottom-24 left-24 max-w-lg z-10">
+<h1 class="font-headline text-6xl font-black mb-6 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-container">
+                Move with Purpose.
+            </h1>
+<p class="text-on-surface-variant text-xl font-body leading-relaxed max-w-md">
+                Experience the city's premier mobility network. Elevating your journey, block by block.
+            </p>
+</div>
+</div>
+<div class="w-full lg:w-[600px] xl:w-[720px] bg-background flex flex-col justify-center px-8 sm:px-16 lg:px-24 py-12 relative overflow-y-auto">
+<div class="mb-16">
+<div class="text-3xl font-headline font-black bg-gradient-to-r from-primary to-primary-container bg-clip-text text-transparent inline-block">CityFlow</div>
+</div>
+<div class="w-full max-w-md mx-auto lg:mx-0">
+<div class="mb-10">
+<h2 class="font-headline text-4xl font-bold mb-3 tracking-tight">Welcome back</h2>
+<p class="text-on-surface-variant text-base">Enter your details to continue your journey.</p>
+</div>
+<div class="flex p-1 bg-surface-container-highest rounded-full mb-10 w-fit">
+<button class="px-8 py-2.5 rounded-full text-sm font-medium transition-all bg-gradient-to-br from-primary to-primary-container text-on-primary shadow-[0_8px_16px_rgba(136,173,255,0.15)]">
+                    Rider
+                </button>
+<button class="px-8 py-2.5 rounded-full text-sm font-medium text-on-surface-variant transition-all hover:text-on-surface">
+                    Driver
+                </button>
+</div>
+<div class="bg-surface-container-low rounded-xl p-8 backdrop-blur-xl bg-zinc-900/60 relative">
+<div class="absolute inset-0 bg-[rgba(24,24,27,0.4)] backdrop-blur-2xl rounded-xl -z-10"></div>
+<form class="space-y-6">
+<div class="space-y-5">
+<div class="relative group">
+<input class="block w-full px-5 py-4 bg-surface-container-highest text-on-surface rounded-lg border-none focus:ring-0 peer placeholder-transparent focus:outline-none" id="email" placeholder="Email address" type="email"/>
+<label class="absolute text-sm text-on-surface-variant duration-300 transform -translate-y-4 scale-75 top-4 z-10 origin-[0] left-5 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-4" for="email">
+                                Email address
+                            </label>
+<div class="absolute inset-0 rounded-lg border border-transparent peer-focus:border-primary/40 pointer-events-none transition-colors"></div>
+</div>
+<div class="relative group">
+<input class="block w-full px-5 py-4 bg-surface-container-highest text-on-surface rounded-lg border-none focus:ring-0 peer placeholder-transparent focus:outline-none" id="password" placeholder="Password" type="password"/>
+<label class="absolute text-sm text-on-surface-variant duration-300 transform -translate-y-4 scale-75 top-4 z-10 origin-[0] left-5 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-4" for="password">
+                                Password
+                            </label>
+<div class="absolute inset-0 rounded-lg border border-transparent peer-focus:border-primary/40 pointer-events-none transition-colors"></div>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface" type="button">
+<span class="material-symbols-outlined text-xl">visibility_off</span>
+</button>
+</div>
+</div>
+<div class="flex items-center justify-between pt-2">
+<div class="flex items-center">
+<input class="w-4 h-4 rounded bg-surface-container-highest border-transparent text-primary focus:ring-primary/40 focus:ring-offset-0" id="remember" type="checkbox"/>
+<label class="ml-3 text-sm font-medium text-on-surface-variant" for="remember">Remember me</label>
+</div>
+<a class="text-sm font-medium text-primary hover:text-primary-container transition-colors" href="#">Forgot password?</a>
+</div>
+<button class="w-full py-4 px-6 rounded-full bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold text-lg shadow-[0_16px_32px_rgba(136,173,255,0.08)] hover:shadow-[0_16px_32px_rgba(136,173,255,0.15)] transition-all mt-4" type="submit">
+                        Sign In
+                    </button>
+</form>
+<div class="mt-8 flex items-center justify-center gap-4">
+<div class="h-px bg-surface-container-highest flex-1"></div>
+<span class="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Or continue with</span>
+<div class="h-px bg-surface-container-highest flex-1"></div>
+</div>
+<div class="mt-8 grid grid-cols-2 gap-4">
+<button class="flex items-center justify-center gap-3 py-3 px-4 rounded-lg bg-surface-variant hover:bg-surface-bright transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-lg">mail</span>
+                        Google
+                    </button>
+<button class="flex items-center justify-center gap-3 py-3 px-4 rounded-lg bg-surface-variant hover:bg-surface-bright transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-lg">ios</span>
+                        Apple
+                    </button>
+</div>
+</div>
+<p class="mt-12 text-center text-sm text-on-surface-variant">
+                Don't have an account? <a class="font-medium text-primary hover:text-primary-container transition-colors ml-1" href="#">Create an account</a>
+</p>
+</div>
+</div>
+</body></html>
